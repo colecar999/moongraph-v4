@@ -1,0 +1,3 @@
+[submodule "morphik-core"]
+	path = morphik-core
+	url = https://github.com/morphik-org/morphik-core.git
