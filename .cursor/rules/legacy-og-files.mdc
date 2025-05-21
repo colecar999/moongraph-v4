@@ -1,0 +1,15 @@
+---
+description:
+globs: **/*.og.*
+alwaysApply: false
+---
+# Legacy Reference Files: *.og.* Naming Convention
+
+Any file with `*.og.*` in its name (for example, `component.og.tsx`) is considered a legacy or reference file. These files are not in active use by the application and are retained in the project for reference only.
+
+**Guidelines:**
+- Do not modify, refactor, or delete these files unless explicitly instructed by the user.
+- If you are unsure whether a file is legacy or in active use, flag the issue to the user for clarification.
+- The `.og.` naming convention is a signal that the file is for reference and not part of the current application logic.
+
+This rule applies to all files in the codebase matching the `*.og.*` pattern.

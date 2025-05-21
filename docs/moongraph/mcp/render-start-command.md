@@ -1,0 +1,1 @@
+node bin/render-mcp.js start

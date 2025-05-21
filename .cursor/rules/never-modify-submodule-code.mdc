@@ -1,0 +1,14 @@
+---
+description: do not edit submodule code
+globs: external/**
+alwaysApply: false
+---
+# Never Modify Submodule Code Directly
+
+external/ contains all submodules.  Submodule code should never be modified directly. To extend or customize submodule functionality, always use one of the following approaches:
+
+- Wrapper scripts
+- Extension apps
+- Configuration overrides
+
+This ensures that submodules remain upgradable and maintainable, and prevents merge conflicts or loss of custom changes when updating the submodule.

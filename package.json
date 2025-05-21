@@ -1,0 +1,5 @@
+{
+	"dependencies": {
+		"@cosmograph/react": "^1.4.2"
+	}
+}

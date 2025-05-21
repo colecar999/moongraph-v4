@@ -1,0 +1,73 @@
+# Python-related files
+*__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.env
+venv/*
+ENV/
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+*.pytest_cache/
+
+core/tests/output
+core/tests/assets
+
+# Virtual environment
+.venv/
+.vscode/
+
+*.DS_Store
+
+storage/*
+logs/*
+samples/*
+aggregated_code.txt
+
+offload/*
+test.pdf
+
+experiments/*
+ee/ui-component/package-lock.json/*
+ee/ui-component/node-modules/*
+ee/ui-component/.next
+
+
+ui-component/notebook-storage/notebooks.json
+ee/ui-component/package-lock.json
+
+# Ignore everything in the morphik-core submodule except the submodule pointer
+/external/morphik-core/*
+!/external/morphik-core/.gitmodules
+!/external/morphik-core
+
+# Node, Python, and build artifacts
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.sqlite3
+.env
+.env.*
+.DS_Store
+
+# Next.js and frontend build
+/frontend/.next/
+/frontend/out/
+/frontend/.env.local
+
+# Backup and temp
+my_code_backup/
+
+# Ignore system files
+Thumbs.db
+
+# Ignore VSCode settings (optional)
+.vscode/
