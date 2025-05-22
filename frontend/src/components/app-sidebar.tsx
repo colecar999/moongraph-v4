@@ -48,32 +48,32 @@ const data = {
   navMain: [
     {
       title: "Home",
-      url: "#",
+      url: "/home",
       icon: IconHome,
     },
     {
       title: "Dashboard",
-      url: "#",
+      url: "/dashboard",
       icon: IconDashboard,
     },
     {
       title: "Chat",
-      url: "#",
+      url: "/chat",
       icon: IconMessageCircle,
     },
     {
       title: "Agent",
-      url: "#",
+      url: "/agent",
       icon: IconRobot,
     },
     {
       title: "Cosmograph",
-      url: "#",
+      url: "/cosmograph",
       icon: IconAtom,
     },
     {
       title: "System",
-      url: "#",
+      url: "/system",
       icon: IconSettings,
     },
   ],
@@ -87,22 +87,22 @@ const data = {
     },
     {
       name: "Search",
-      url: "#",
+      url: "/documents/search",
       icon: IconSearch,
     },
     {
       name: "Graphs",
-      url: "#",
+      url: "/graphs",
       icon: IconGraph,
     },
     {
       name: "System",
-      url: "#",
+      url: "/documents/system",
       icon: IconSettings,
     },
     {
       name: "Reports",
-      url: "#",
+      url: "/documents/reports",
       icon: IconReport,
     },
   ],

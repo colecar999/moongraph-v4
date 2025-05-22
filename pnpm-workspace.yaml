@@ -1,0 +1,5 @@
+packages:
+  - 'frontend'
+  # You can add other packages here in the future, for example:
+  # - 'packages/*'  # if you have a directory named 'packages' with multiple sub-packages
+  # - 'services/backend' # if you create a backend service 

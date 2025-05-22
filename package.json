@@ -1,5 +1,11 @@
 {
 	"dependencies": {
-		"@cosmograph/react": "^1.4.2"
-	}
+		"@cosmograph/react": "^1.4.2",
+		"@radix-ui/react-switch": "^1.2.5",
+		"force-graph": "^1.43.4"
+	},
+	"name": "moongraph-v4-workspace",
+	"private": true,
+	"devDependencies": {},
+	"scripts": {}
 }

@@ -1,34 +1,45 @@
-import { AppSidebar } from "@/components/app-sidebar"
-import { SiteHeader } from "@/components/site-header"
-import {
-  SidebarInset,
-  SidebarProvider,
-} from "@/components/ui/sidebar"
+"use client";
+
+import AppLayout from "../../AppLayout"; // Adjusted import path
+import DocumentsSection from "@/components/documents/DocumentsSection"
+import { useConnection } from "@/context/ConnectionContext"
 
 export default function FilesPage() {
+  const { apiBaseUrl, authToken } = useConnection()
+
+  const handleDocumentUpload = (fileName: string, fileSize: number) => {
+    console.log("Document uploaded:", fileName, fileSize)
+  }
+  const handleDocumentDelete = (fileName: string) => {
+    console.log("Document deleted:", fileName)
+  }
+  const handleDocumentClick = (fileName: string) => {
+    console.log("Document clicked:", fileName)
+  }
+  const handleFolderCreate = (folderName: string) => {
+    console.log("Folder created:", folderName)
+  }
+  const handleFolderClick = (folderName: string | null) => {
+    console.log("Folder clicked:", folderName)
+  }
+  const handleRefresh = () => {
+    console.log("Refresh triggered")
+  }
+
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "calc(var(--spacing) * 72)",
-          "--header-height": "calc(var(--spacing) * 12)",
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar variant="inset" />
-      <SidebarInset>
-        <SiteHeader />
-        <div className="flex flex-1 flex-col">
-          <div className="@container/main flex flex-1 flex-col gap-2 p-4">
-            {/* Placeholder for file management content */}
-            <h2 className="text-xl font-semibold">Files</h2>
-            <p className="text-muted-foreground">
-              Manage your documents and files here.
-            </p>
-            {/* You can add components for file listing, uploading, etc. here */}
-          </div>
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <AppLayout>
+      <DocumentsSection
+        apiBaseUrl={apiBaseUrl}
+        authToken={authToken}
+        initialFolder={null}
+        setSidebarCollapsed={(collapsed) => console.log("Set sidebar collapsed:", collapsed)}
+        onDocumentUpload={handleDocumentUpload}
+        onDocumentDelete={handleDocumentDelete}
+        onDocumentClick={handleDocumentClick}
+        onFolderCreate={handleFolderCreate}
+        onFolderClick={handleFolderClick}
+        onRefresh={handleRefresh}
+      />
+    </AppLayout>
   )
 } 
