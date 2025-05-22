@@ -1,6 +1,5 @@
 "use client";
 
-import AppLayout from "../../AppLayout"; // Adjusted import path
 import DocumentsSection from "@/components/documents/DocumentsSection"
 import { useConnection } from "@/context/ConnectionContext"
 
@@ -27,7 +26,6 @@ export default function FilesPage() {
   }
 
   return (
-    <AppLayout>
       <DocumentsSection
         apiBaseUrl={apiBaseUrl}
         authToken={authToken}
@@ -40,6 +38,5 @@ export default function FilesPage() {
         onFolderClick={handleFolderClick}
         onRefresh={handleRefresh}
       />
-    </AppLayout>
   )
 } 
