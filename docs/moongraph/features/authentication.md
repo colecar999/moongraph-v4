@@ -90,7 +90,9 @@ graph TD
 
 ## 5. Frontend Implementation (Next.js with NextAuth.js)
 
-**Status: Step 5.1 Completed.**
+**Status: Completed.**
+
+(Note: Ensured root `layout.tsx` remains a Server Component by moving client-side providers like `SessionProvider` and `ConnectionProvider` into a separate `providers.tsx` Client Component, which is then used in `layout.tsx`. This allows `layout.tsx` to export `metadata`.)
 
 1.  **Install NextAuth.js:** **(DONE)**
     ```bash
@@ -580,6 +582,139 @@ erDiagram
 *   **First User/System Setup:**
     *   Upon first successful authentication of a new user via Auth0, a corresponding record should be created in the `users` table in Morphik Core. This can be done lazily on their first API call.
     *   Consider seeding initial `permissions` and `roles` (e.g., 'Folder Admin', 'Folder Editor', 'Folder Viewer', 'Team Admin', 'Team Member') in the database.
+
+### 6.3.1. Initial Simple Authorization for Testing
+
+To facilitate early testing of the authentication flow (Auth0 integration, JWT verification, user provisioning) before the full Role-Based Access Control (RBAC) system is implemented, a simplified authorization mechanism can be used initially.
+
+**Approach:**
+
+1.  **Static Permissions in `AuthContext`:**
+    *   The `AuthContext` object, created by the `verify_token` function in `morphik-core/core/auth_utils.py`, is populated with user details after successful Auth0 JWT validation and user lookup/creation in the local `users` table.
+    *   For initial testing, the `_get_or_create_db_user` helper function within `auth_utils.py` provides a static set of permissions (e.g., `{"read", "write"}`) when constructing the data payload for `AuthContext`.
+    *   The `AuthContext` model (`morphik-core/core/models/auth.py`) has been updated to include `email` and `auth0_user_id` fields, which are populated from the user's database record (derived from the Auth0 token).
+
+2.  **Using `AuthContext` in Endpoints:**
+    *   FastAPI endpoints requiring authentication will include `auth: AuthContext = Depends(verify_token)` in their signature.
+    *   Inside the endpoint, simple checks can be performed against the `auth.permissions` set.
+
+**Example Test Endpoint (`morphik-core/core/api.py` or similar):**
+
+```python
+# from fastapi import APIRouter, Depends, HTTPException # etc.
+# from core.auth_utils import verify_token
+# from core.models.auth import AuthContext 
+# import logging
+# logger = logging.getLogger(__name__)
+
+# @app.get("/test/secure-data") # Or on a router
+# async def get_test_secure_data(auth: AuthContext = Depends(verify_token)):
+#     logger.info(
+#         f"Accessing /test/secure-data by user_id: {auth.user_id}, "
+#         f"auth0_user_id: {auth.auth0_user_id}, email: {auth.email}, "
+#         f"entity_id: {auth.entity_id}, entity_type: {auth.entity_type}, "
+#         f"app_id: {auth.app_id}, permissions: {auth.permissions}"
+#     )
+# 
+#     if "read" not in auth.permissions:
+#         raise HTTPException(status_code=403, detail="Forbidden: Read permission required.")
+# 
+#     can_perform_write = "write" in auth.permissions
+# 
+#     return {
+#         "message": "This is secure data!",
+#         "auth_context_summary": {
+#             "user_id (internal)": auth.user_id,
+#             "auth0_user_id": auth.auth0_user_id,
+#             "email": auth.email,
+#             "permissions": list(auth.permissions),
+#             "entity_type": auth.entity_type,
+#             "entity_id": auth.entity_id,
+#             "app_id": auth.app_id
+#         },
+#         "can_perform_write_action": can_perform_write
+#     }
+```
+
+**Testing Scope with Simple Authorization:**
+
+*   **Auth0 Integration & Token Flow:** End-to-end validation from frontend login to backend token verification.
+*   **User Provisioning:** Correct creation of new users in the `users` table and fetching of existing users.
+*   **`AuthContext` Contents:** Verification that `AuthContext` is populated with correct `user_id` (internal), `auth0_user_id`, `email`, `entity_type`, `entity_id`, `app_id` (if applicable), and the static test `permissions`.
+*   **Basic Endpoint Protection:** Endpoints are inaccessible without a valid token and basic permission checks work as expected.
+
+**Transition to Full RBAC:**
+
+This simple mechanism is a temporary measure. The full RBAC implementation will involve:
+*   Populating the `roles`, `permissions`, `role_permissions`, `user_folder_roles`, and `team_folder_roles` tables.
+*   Modifying `verify_token` or a new authorization dependency to dynamically determine a user's permissions for a specific resource by querying these RBAC tables based on the `auth.user_id` (and potentially `auth.team_memberships` once that data is available in `AuthContext` or queried).
+*   The static `permissions` in `AuthContext` will then likely be removed or play a different role (e.g., very basic default permissions before full context is known).
+
+**Example Test Endpoint with Resource-Specific Permission Check (`morphik-core/core/api.py` or similar):**
+
+This example demonstrates how an endpoint might check for a specific permission on a folder.
+
+```python
+# from fastapi import APIRouter, Depends, HTTPException, Path
+# from core.auth_utils import verify_token
+# from core.models.auth import AuthContext 
+# from core.database.postgres_database import PostgresDatabase # Assuming direct import or via dependency
+# from core.dependencies import get_db_dependency # Hypothetical dependency to get DB instance
+# import uuid
+# import logging
+# logger = logging.getLogger(__name__)
+
+# @app.get("/folders/{folder_id_str}/view-details") # Or on a router
+# async def view_folder_details(
+#     folder_id_str: str = Path(..., title="The ID of the folder to view"),
+#     auth: AuthContext = Depends(verify_token),
+#     db: PostgresDatabase = Depends(get_db_dependency) # Replace with your actual DB dependency
+# ):
+#     try:
+#         folder_uuid = uuid.UUID(folder_id_str)
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="Invalid folder ID format.")
+# 
+#     logger.info(
+#         f"User {auth.user_id} attempting to view folder {folder_uuid}."
+#     )
+# 
+#     # Get user's specific permissions for this folder
+#     try:
+#         folder_permissions = await db.get_user_permissions_for_folder(
+#             user_id=uuid.UUID(auth.user_id), # Ensure auth.user_id is cast to UUID if it's str
+#             folder_id=folder_uuid
+#         )
+#     except Exception as e:
+#         logger.error(f"Error fetching permissions for folder {folder_uuid}: {e}", exc_info=True)
+#         raise HTTPException(status_code=500, detail="Error processing folder permissions.")
+# 
+#     # Check for the required permission
+#     required_permission = "folder:read"
+#     if required_permission not in folder_permissions:
+#         logger.warning(
+#             f"Forbidden: User {auth.user_id} lacks '{required_permission}' for folder {folder_uuid}. "
+#             f"Has permissions: {folder_permissions}"
+#         )
+#         raise HTTPException(
+#             status_code=403, 
+#             detail=f"Forbidden: You do not have '{required_permission}' permission for this folder."
+#         )
+# 
+#     # If permission check passes, proceed to fetch and return folder details
+#     # (Actual folder fetching logic would go here)
+#     logger.info(
+#         f"User {auth.user_id} has '{required_permission}' for folder {folder_uuid}. Access granted."
+#     )
+#     return {
+#         "message": f"Successfully accessed folder {folder_uuid} details.",
+#         "folder_id": folder_uuid,
+#         "your_permissions_for_this_folder": list(folder_permissions)
+#         # ... include actual folder data here ...
+#     }
+```
+
+This demonstrates a more granular check. The next step in a full implementation would be to encapsulate this logic into a reusable dependency like `Depends(require_permission("folder:read"))`.
 
 ### 6.4. New API Endpoints
 
