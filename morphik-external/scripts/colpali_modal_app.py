@@ -5,7 +5,6 @@ import io
 import time
 from typing import List
 from pydantic import BaseModel
-# Removed: Any, ValidationError, FastAPIRequest
 
 # --- Modal App Definition ---
 app = modal.App(name="colpali-embedding-service-prod") # Renamed stubb to app
