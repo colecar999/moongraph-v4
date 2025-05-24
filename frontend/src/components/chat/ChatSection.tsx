@@ -29,7 +29,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
   isReadonly = false,
   onChatSubmit,
 }) => {
-  const { apiBaseUrl, authToken } = useConnection(); // Added
+  const { apiBaseUrl, authToken, isAuthenticated, isLoading } = useConnection(); // Updated to include auth states
   const chatId = generateUUID();
   const { messages, input, setInput, status, handleSubmit, queryOptions, updateQueryOption } = useMorphikChat({
     chatId,
@@ -115,13 +115,13 @@ const ChatSection: React.FC<ChatSectionProps> = ({
 
   useEffect(() => {
     const fetchData = async () => {
-      if (authToken || apiBaseUrl.includes("localhost")) {
+      if (isAuthenticated) {
         await fetchGraphs();
         await fetchFolders();
       }
     };
     fetchData();
-  }, [authToken, apiBaseUrl, fetchGraphs, fetchFolders]);
+  }, [isAuthenticated, apiBaseUrl, fetchGraphs, fetchFolders]);
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   React.useEffect(() => {
@@ -129,6 +129,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       adjustHeight();
     }
   }, []);
+  
   const adjustHeight = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -158,6 +159,32 @@ const ChatSection: React.FC<ChatSectionProps> = ({
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
+
+  // Show loading state while checking authentication (after all hooks are called)
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full flex-col bg-background">
+        <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="text-sm text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show message if not authenticated (after all hooks are called)
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-full w-full flex-col bg-background">
+        <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
+          <div className="text-center">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Authentication Required</h3>
+            <p className="text-sm text-gray-600">Please sign in to access chat functionality.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="relative flex h-full w-full flex-col bg-background">

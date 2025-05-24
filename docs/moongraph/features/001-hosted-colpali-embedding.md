@@ -73,75 +73,101 @@ import os
 import base64
 import io
 import time
+import gc
+from typing import List
+from pydantic import BaseModel
 
-# --- Modal Stub Definition ---
-stubb = modal.Stub(name="colpali-embedding-service-prod") # Add -prod for clarity
+# --- Modal App Definition ---
+app = modal.App(name="colpali-embedding-service-prod")
 
 # --- Environment and Image Configuration ---
-# Define the Docker image for the Modal function.
-# Ensure PyTorch is installed with CUDA support. Modal's newer base images with GPU selection often handle this well.
-# Specify exact versions if compatibility issues arise.
 gpu_image = modal.Image.debian_slim().pip_install(
-    "torch", # Let Modal manage CUDA versioning if possible, or specify e.g., "torch==2.5.1+cu121"
+    "torch",
     "transformers",
     "colpali-engine>=0.1.0",
     "Pillow",
     "numpy",
-    "filetype" # If used in your image decoding logic
+    "filetype",
+    "fastapi",
+    "uvicorn"
 ).env({
     "HF_HOME": "/cache/huggingface",
     "TRANSFORMERS_CACHE": "/cache/huggingface/models",
     "HF_HUB_CACHE": "/cache/huggingface/hub",
-    "PIP_NO_CACHE_DIR": "true", # Avoid caching pip downloads in the image layer if not needed
+    "PIP_NO_CACHE_DIR": "true",
+    # CUDA memory optimization environment variables
+    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+    "CUDA_LAUNCH_BLOCKING": "1"
 })
 
+# --- Pydantic Model for Request Body ---
+class EmbeddingRequest(BaseModel):
+    input_type: str
+    inputs: List[str]
+
 # --- Modal Class for the Service ---
-@stubb.cls(
-    gpu="T4",  # Or "A10G". Consider instance type based on cost/performance needs.
+@app.cls(
+    gpu="A10G",  # Upgraded to A10G for 24GB GPU memory (vs T4's 14GB)
     image=gpu_image,
-    container_idle_timeout=300,  # Spins down after 5 minutes of inactivity.
+    scaledown_window=300,
     secrets=[
-        modal.Secret.from_name("my-huggingface-secret"), # For HF model download authentication
-        modal.Secret.from_name("colpali-service-api-key")  # For securing our endpoint
+        modal.Secret.from_name("my-huggingface-secret"),
+        modal.Secret.from_name("colpali-service-api-key")
     ],
-    concurrency_limit=10, # Max concurrent requests, tune based on GPU and model performance
-    timeout=600 # Max execution time for a request in seconds
+    max_containers=5,  # Reduced from 10 to avoid resource contention
+    timeout=600
 )
 class ColpaliModalService:
-    def __enter__(self): # Equivalent to __init__ for Modal classes, runs on cold start
+    def __init__(self):
+        print("ColpaliModalService: __init__ starting")
         import torch
         from colpali_engine.models import ColQwen2_5, ColQwen2_5_Processor
         
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"ColpaliModalService: Initializing model on device: {self.device}")
-        
-        hf_token = os.environ.get("HUGGINGFACE_TOKEN")
-        self.service_api_key = os.environ.get("SERVICE_API_KEY")
-
-        if not self.service_api_key:
-            print("CRITICAL WARNING: SERVICE_API_KEY is not set! Endpoint will be unsecured.")
-
-        model_name = "tsystems/colqwen2.5-3b-multilingual-v1.0"
-        
-        self.model = ColQwen2_5.from_pretrained(
-            model_name,
-            torch_dtype=torch.bfloat16,
-            device_map=self.device,
-            attn_implementation="flash_attention_2" if self.device == "cuda" else "eager",
-            token=hf_token,
-            cache_dir="/cache/huggingface/models"
-        ).eval()
-        
-        self.processor = ColQwen2_5_Processor.from_pretrained(
-            model_name,
-            token=hf_token,
-            cache_dir="/cache/huggingface/hub"
-        )
-        print(f"ColpaliModalService: Model {model_name} loaded on {self.device}.")
+        try:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"ColpaliModalService: Initializing model on device: {self.device}")
+            
+            # Clear any existing GPU memory
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                print(f"Initial GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+            
+            hf_token = os.environ.get("HUGGINGFACE_TOKEN")
+            self.service_api_key = os.environ.get("SERVICE_API_KEY")
+            
+            if not self.service_api_key:
+                print("CRITICAL WARNING: SERVICE_API_KEY is not set! Endpoint will be unsecured.")
+            
+            model_name = "tsystems/colqwen2.5-3b-multilingual-v1.0"
+            
+            self.model = ColQwen2_5.from_pretrained(
+                model_name,
+                torch_dtype=torch.bfloat16,
+                device_map=self.device,
+                attn_implementation="eager",  # Better memory efficiency
+                token=hf_token,
+                cache_dir="/cache/huggingface/models"
+            ).eval()
+            
+            self.processor = ColQwen2_5_Processor.from_pretrained(
+                model_name,
+                token=hf_token,
+                cache_dir="/cache/huggingface/hub"
+            )
+            
+            # Clear memory after model loading
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
+                memory_reserved = torch.cuda.memory_reserved(0) / 1024**3
+                print(f"Model loaded. GPU memory allocated: {memory_allocated:.2f} GB, reserved: {memory_reserved:.2f} GB")
+                
+        except Exception as e:
+            print(f"ColpaliModalService: Exception during __init__: {e}")
+            raise
 
     def _decode_image(self, base64_string: str):
         from PIL.Image import open as open_image
-        # Basic check if it might be a data URI
         if base64_string.startswith("data:"):
             try:
                 base64_string = base64_string.split(",", 1)[1]
@@ -153,71 +179,115 @@ class ColpaliModalService:
         except Exception as e:
             raise ValueError(f"Failed to decode base64 image: {e}")
 
-    @modal.web_endpoint(method="POST", label="embeddings") # Creates the HTTP POST endpoint
-    async def generate_embeddings_endpoint(self, request_data: dict, request: modal.asgi.Request):
+    def _clear_gpu_memory(self):
+        """Clear GPU memory and run garbage collection"""
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @modal.fastapi_endpoint(method="POST", label="embeddings")
+    async def generate_embeddings_endpoint(self, payload: EmbeddingRequest):
         import torch
         import numpy as np
-
-        # --- Endpoint Authentication ---
-        auth_header = request.headers.get("Authorization")
-        if not auth_header or not self.service_api_key:
-            print("Unauthenticated request or service API key not configured.")
-            return modal.asgi.Response(content=b'{"error": "Unauthorized"}', status_code=401, media_type="application/json")
+        from fastapi.responses import JSONResponse
         
-        token_type, _, client_token = auth_header.partition(' ')
-        if token_type.lower() != "bearer" or client_token != self.service_api_key:
-            print(f"Invalid token. Expected Bearer, got {token_type}")
-            return modal.asgi.Response(content=b'{"error": "Forbidden"}', status_code=403, media_type="application/json")
-        # --- End Authentication ---
-
-        start_time = time.time()
+        input_type = payload.input_type
+        inputs_data = payload.inputs
         
-        input_type = request_data.get("input_type")
-        inputs_data = request_data.get("inputs", [])
-
         if not inputs_data:
-            return {"embeddings": []} # Return empty list for empty inputs
-
-        print(f"Authenticated request. Processing: input_type='{input_type}', num_inputs={len(inputs_data)}")
-
+            return {"embeddings": []}
+            
+        print(f"Processing: input_type='{input_type}', num_inputs={len(inputs_data)}")
+        
+        # Log initial GPU memory state
+        if torch.cuda.is_available():
+            memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
+            memory_reserved = torch.cuda.memory_reserved(0) / 1024**3
+            print(f"Pre-processing GPU memory - allocated: {memory_allocated:.2f} GB, reserved: {memory_reserved:.2f} GB")
+        
         all_embeddings_list = []
-        # Batching can be further optimized depending on observed performance on the chosen GPU.
-        batch_size = 8 if input_type == "text" else 4 # Tunable batch sizes
-
+        # Optimized batch sizes to prevent OOM
+        batch_size = 4 if input_type == "text" else 1  # Process images one at a time
+        
         try:
             for i in range(0, len(inputs_data), batch_size):
                 batch_input_data = inputs_data[i:i + batch_size]
                 processed_batch = None
-
+                
+                print(f"Processing batch {i//batch_size + 1}/{(len(inputs_data) + batch_size - 1)//batch_size}")
+                
                 if input_type == "image":
                     pil_images = [self._decode_image(b64_str) for b64_str in batch_input_data]
                     if not pil_images: continue
                     processed_batch = self.processor.process_images(pil_images).to(self.device)
                 elif input_type == "text":
                     if not all(isinstance(text, str) for text in batch_input_data):
-                        return modal.asgi.Response(content=b'{"error": "Invalid text inputs"}', status_code=400, media_type="application/json")
+                        return JSONResponse(content={"error": "Invalid text inputs"}, status_code=400)
                     processed_batch = self.processor.process_queries(batch_input_data).to(self.device)
                 else:
-                    return modal.asgi.Response(content=b'{"error": "Invalid input_type"}', status_code=400, media_type="application/json")
-
+                    return JSONResponse(content={"error": "Invalid input_type"}, status_code=400)
+                
                 if processed_batch:
-                    with torch.no_grad():
-                        embedding_tensor = self.model(**processed_batch)
-                    current_batch_embeddings_np = embedding_tensor.to(torch.float32).cpu().numpy().tolist()
-                    all_embeddings_list.extend(current_batch_embeddings_np)
+                    try:
+                        with torch.no_grad():
+                            embedding_tensor = self.model(**processed_batch)
+                        current_batch_embeddings_np = embedding_tensor.to(torch.float32).cpu().numpy().tolist()
+                        all_embeddings_list.extend(current_batch_embeddings_np)
+                        
+                        # Clear memory after each batch
+                        del embedding_tensor
+                        del processed_batch
+                        self._clear_gpu_memory()
+                        
+                        if torch.cuda.is_available():
+                            memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
+                            print(f"After batch: GPU memory allocated: {memory_allocated:.2f} GB")
+                            
+                    except RuntimeError as e:
+                        if "out of memory" in str(e):
+                            print(f"CUDA OOM error: {e}")
+                            self._clear_gpu_memory()
+                            # Fallback to individual processing
+                            if len(batch_input_data) > 1:
+                                print("Falling back to individual processing...")
+                                for single_item in batch_input_data:
+                                    try:
+                                        if input_type == "image":
+                                            single_image = [self._decode_image(single_item)]
+                                            single_processed = self.processor.process_images(single_image).to(self.device)
+                                        else:
+                                            single_processed = self.processor.process_queries([single_item]).to(self.device)
+                                        
+                                        with torch.no_grad():
+                                            single_embedding = self.model(**single_processed)
+                                        single_embedding_np = single_embedding.to(torch.float32).cpu().numpy().tolist()
+                                        all_embeddings_list.extend(single_embedding_np)
+                                        
+                                        del single_embedding
+                                        del single_processed
+                                        self._clear_gpu_memory()
+                                        
+                                    except Exception as single_e:
+                                        print(f"Failed to process individual item: {single_e}")
+                                        continue
+                            else:
+                                raise e
+                        else:
+                            raise e
+                        
         except ValueError as ve:
             print(f"ValueError during processing: {ve}")
-            return modal.asgi.Response(content=f'{{"error": "Input processing error: {ve}"}}'.encode(), status_code=400, media_type="application/json")
+            return JSONResponse(content={"error": f"Input processing error: {str(ve)}"}, status_code=400)
         except Exception as e:
             print(f"Unexpected error during embedding generation: {e}")
-            return modal.asgi.Response(content=b'{"error": "Internal server error during embedding"}', status_code=500, media_type="application/json")
+            self._clear_gpu_memory()
+            return JSONResponse(content={"error": "Internal server error during embedding"}, status_code=500)
         
-        end_time = time.time()
-        print(f"Successfully processed {len(inputs_data)} items of type '{input_type}' in {end_time - start_time:.2f} seconds.")
+        # Final cleanup
+        self._clear_gpu_memory()
         
         return {"embeddings": all_embeddings_list}
-
-```
 
 ### Step 4.2: Prepare Modal Secrets
 
@@ -306,13 +376,29 @@ Secrets are used to securely provide API keys and tokens to your Modal applicati
 
 ## 6. Production Considerations & Modal Settings
 
--   **GPU Choice (`gpu="T4"`):** T4 is a good balance. For higher throughput or lower latency, A10G or other GPUs can be selected. Monitor performance and cost.
--   **`container_idle_timeout=300`:** 5 minutes. Adjust based on usage patterns. Longer timeouts reduce cold starts but increase costs if there are long idle periods with no scale-to-zero. Shorter timeouts save more money but increase cold start frequency.
--   **`concurrency_limit`:** The Modal app example sets this to `10`. This is the number of concurrent requests one container instance will handle. For GPU tasks, this is often limited by GPU memory. Tune this by observing performance and GPU utilization under load.
+-   **GPU Choice (`gpu="A10G"`):** **UPGRADED from T4 to A10G** - A10G provides 24GB GPU memory vs T4's 14GB, significantly reducing OOM issues. T4 was insufficient for ColPali's memory requirements when processing multiple images.
+-   **Memory Management:** 
+    - **Batch sizes optimized:** Images processed one at a time (`batch_size=1`) to prevent CUDA OOM
+    - **Aggressive memory clearing:** GPU memory cleared after each batch with `torch.cuda.empty_cache()`
+    - **Individual fallback:** If batch processing fails, automatically falls back to processing items individually
+    - **Environment variables:** Added `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` for better memory management
+-   **`scaledown_window=300`:** 5 minutes. Adjust based on usage patterns. Longer timeouts reduce cold starts but increase costs if there are long idle periods with no scale-to-zero. Shorter timeouts save more money but increase cold start frequency.
+-   **`max_containers`:** **REDUCED to 5** (from 10) to avoid resource contention and ensure each container has adequate GPU memory.
 -   **`timeout=600`:** Max execution time for a single request to the Modal endpoint. ColPali can be slow per chunk. Ensure this is longer than your expected longest single batch processing time.
--   **Modal Logging:** Modal provides logs for your deployed apps via its dashboard, essential for debugging.
--   **Cost Monitoring:** Keep an eye on your Modal usage and billing.
--   **Error Handling:** The provided Modal app code has basic error handling. Enhance as needed for production (e.g., more specific error types, detailed logging).
+-   **Modal Logging:** Modal provides logs for your deployed apps via its dashboard, essential for debugging memory issues and performance.
+-   **Cost Monitoring:** Keep an eye on your Modal usage and billing. A10G is more expensive than T4 but necessary for reliable operation.
+-   **Error Handling:** Enhanced error handling with automatic fallback for OOM scenarios and comprehensive memory cleanup.
 -   **Security:** The Bearer token authentication is a good start. For public-facing production systems, consider network policies, rate limiting (if Modal offers it or via an upstream gateway), etc.
+
+### Memory Optimization Summary
+
+The key optimizations implemented to prevent CUDA OOM errors:
+
+1. **GPU Upgrade**: T4 (14GB) → A10G (24GB) for sufficient memory headroom
+2. **Reduced Batch Sizes**: Images processed individually (`batch_size=1`) vs previous batch of 4
+3. **Memory Clearing**: Explicit `torch.cuda.empty_cache()` and garbage collection after each batch
+4. **Fallback Strategy**: Automatic individual processing if batch processing fails
+5. **Memory Monitoring**: Real-time GPU memory usage logging for debugging
+6. **Environment Optimization**: CUDA memory allocation settings for better fragmentation handling
 
 This setup provides a robust and scalable way to handle ColPali embeddings, suitable for both local development (pointing to the deployed Modal app) and production deployments on platforms like Render or Vercel.

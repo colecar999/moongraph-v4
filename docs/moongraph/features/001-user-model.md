@@ -4,11 +4,46 @@
 
 **Date:** October 26, 2023 (Note: Use current date when generating)
 **Author:** Moongraph AI Assistant
-**Status:** Proposed
+**Status:** ✅ **IMPLEMENTED** (December 2024)
 
 This document details the design and implementation plan for the `users` table (represented by the `UserModel` in SQLAlchemy) within the Morphik Core backend. This model is a cornerstone of the new authentication and authorization system detailed in the main `authentication.md` plan. Its primary purpose is to link user identities from Auth0 (our chosen Identity Provider) to internal user profiles and associated data within the Moongraph application.
 
-## 2. Context and Purpose
+## 2. Implementation Status
+
+### ✅ **COMPLETED IMPLEMENTATION**
+
+**Implementation Date:** December 2024  
+**Hot Reload Implementation:** Successfully tested via Docker hot reload development workflow
+
+The `UserModel` has been **fully implemented** in `morphik-core/core/database/postgres_database.py` with the following completed components:
+
+#### **2.1 Database Schema**
+- ✅ SQLAlchemy `UserModel` class implemented with all planned fields
+- ✅ UUID primary key with automatic generation via `uuid.uuid4()`
+- ✅ Auth0 integration fields (`auth0_user_id`, `email`) with proper constraints
+- ✅ Profile fields (`name`, `avatar_url`) implemented as nullable
+- ✅ Audit timestamps (`created_at`, `updated_at`) with automatic management
+- ✅ Database indexes on `auth0_user_id` and `email` for efficient lookups
+
+#### **2.2 Database Operations**
+- ✅ `fetch_user_by_auth0_id()` - Retrieves users by Auth0 ID
+- ✅ `create_user_from_auth0_data()` - Creates new users from Auth0 profile data
+- ✅ User provisioning integration with authentication flow
+- ✅ Proper error handling and logging for user operations
+
+#### **2.3 RBAC Integration** 
+- ✅ Foreign key relationships established with teams, roles, and permissions tables
+- ✅ `UserFolderRoleModel` implemented for user-specific folder permissions
+- ✅ `TeamMembershipModel` implemented for team associations
+- ✅ Full integration with Role-Based Access Control system
+
+#### **2.4 Hot Reload Development Success**
+- ✅ Database schema fixes applied via Docker hot reload (no rebuild required)
+- ✅ UUID type mismatch resolved (`FolderModel.id` String → UUID)
+- ✅ Import errors fixed (`DateTime` import added to SQLAlchemy imports)
+- ✅ Index creation updated for new ownership fields
+
+## 3. Context and Purpose
 
 As Moongraph evolves to support more sophisticated features like team collaboration, granular permissions, and enterprise knowledge management, a robust user model is essential. The `users` table serves as the central repository for user-specific information that is managed internally by Moongraph, while still leveraging Auth0 for the primary concerns of identity verification and credential management.
 
@@ -20,7 +55,7 @@ Key functions of this model include:
 
 This model directly supports the implementation of user provisioning upon first login, as described in the authentication flow.
 
-## 3. Requirements
+## 4. Requirements
 
 The `users` table and its corresponding SQLAlchemy model must satisfy the following requirements:
 
@@ -34,7 +69,7 @@ The `users` table and its corresponding SQLAlchemy model must satisfy the follow
 *   **Extensibility:** Allow for future additions of Moongraph-specific user profile attributes or settings without major schema overhauls.
 *   **Database Integrity:** Enforce uniqueness constraints on `auth0_user_id` and `email`.
 
-## 4. Proposed Schema Definition
+## 5. Proposed Schema Definition
 
 The schema for the `users` table is derived from the specifications in `authentication.md` (Section 6.2).
 
@@ -53,7 +88,7 @@ The schema for the `users` table is derived from the specifications in `authenti
 
 *(Note: `settings` column added as an example of extensibility, not explicitly in original `authentication.md` but good practice).*
 
-## 5. Implementation Plan: SQLAlchemy Model
+## 6. Implementation Plan: SQLAlchemy Model
 
 The `users` table will be represented by a SQLAlchemy model class named `UserModel` within `morphik-core/core/database/postgres_database.py`.
 
@@ -98,7 +133,7 @@ class UserModel(Base):
 *   **Nullability:** `nullable=False` will be enforced for `auth0_user_id` and `email`.
 *   **Indexes:** SQLAlchemy's `index=True` and `unique=True` will create the necessary database indexes.
 
-## 6. Data Management and Synchronization
+## 7. Data Management and Synchronization
 
 *   **User Provisioning:**
     *   New users will be added to the `users` table by the `_get_or_create_db_user` function in `morphik-core/core/auth_utils.py`.
@@ -110,7 +145,7 @@ class UserModel(Base):
     *   The `updated_at` timestamp will reflect these changes.
 *   **Data Integrity:** The database schema (unique constraints) will prevent duplicate `auth0_user_id` or `email` entries.
 
-## 7. Key System Interactions
+## 8. Key System Interactions
 
 *   **`morphik-core/core/auth_utils.py`:**
     *   The `verify_token` function, through its call to `_get_or_create_db_user`, is the primary point of interaction for reading from and writing to the `users` table during the authentication flow.
@@ -126,7 +161,7 @@ class UserModel(Base):
     *   `user_folder_roles.user_id` will be a foreign key to `users.id`.
     *   `invitations.invited_by_user_id` will be a foreign key to `users.id`.
 
-## 8. Schema Management and Evolution
+## 9. Schema Management and Evolution
 
 *   **Initial Creation:** The `UserModel` class, once defined in `postgres_database.py`, will be included in `Base.metadata`. The `Base.metadata.create_all(conn, checkfirst=True)` call within the `PostgresDatabase.initialize()` method will create the `users` table in the database if it does not already exist.
 *   **Future Migrations:**
@@ -136,14 +171,14 @@ class UserModel(Base):
         *   **Manual SQL Scripts:** Writing and applying SQL DDL scripts manually. This is less maintainable and more error-prone for complex changes.
     *   For now, any immediate minor additions (like adding a nullable `settings` JSONB column if decided upon) could potentially be handled with an `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statement in `initialize()`, similar to existing patterns in that method, but this is not a scalable long-term solution.
 
-## 9. Security and PII Considerations
+## 10. Security and PII Considerations
 
 *   The `users` table will store Personally Identifiable Information (PII), notably `email` and potentially `name`. All access to this data must be appropriately secured and logged.
 *   The `auth0_user_id` is a sensitive identifier linking to the external IdP and should be protected.
 *   Database access controls and application-level authorization checks must ensure that only authorized services or personnel can query or modify this table.
 *   Consider implications of data privacy regulations (e.g., GDPR, CCPA) regarding user data storage, access, and deletion.
 
-## 10. Future Enhancements (Post-MVP)
+## 11. Future Enhancements (Post-MVP)
 
 Beyond the core requirements, the `users` table could be extended to support:
 
