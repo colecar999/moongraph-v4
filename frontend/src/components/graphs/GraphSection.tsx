@@ -21,6 +21,7 @@ import { AlertCircle, Share2, Plus, Network, Tag, Link, ArrowLeft } from "lucide
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MultiSelectDropdown, MultiSelectOption } from "@/components/ui/MultiSelectDropdown";
 
 // Dynamically import ForceGraphComponent to avoid SSR issues
 const ForceGraphComponent = dynamic(() => import("@/components/graphs/ForceGraphComponent"), { // MODIFIED PATH
@@ -121,6 +122,8 @@ const GraphSection: React.FC<GraphSectionProps> = ({
   const [showLinkLabels, setShowLinkLabels] = useState(true);
   const [showVisualization, setShowVisualization] = useState(false);
   const [graphDimensions, setGraphDimensions] = useState({ width: 0, height: 0 });
+  const [availableDocuments, setAvailableDocuments] = useState<MultiSelectOption[]>([]);
+  const [fetchingDocs, setFetchingDocs] = useState(false);
 
   // Refs for graph visualization
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -207,6 +210,49 @@ const GraphSection: React.FC<GraphSectionProps> = ({
       setLoading(false);
     }
   }, [apiBaseUrl, createHeaders]);
+
+  // Fetch available documents for the multi-select dropdown
+  const fetchAvailableDocuments = useCallback(async () => {
+    if (!authToken) return; // Don't fetch if not authenticated
+    setFetchingDocs(true);
+    try {
+      const headers = createHeaders();
+      // Assuming a GET /documents endpoint that lists documents
+      // Adjust if your actual endpoint is different (e.g., POST with body for filters)
+      const response = await fetch(`${apiBaseUrl}/documents`, { 
+        method: "POST", // Based on api.py, list_documents is a POST endpoint
+        headers: createHeaders("application/json"),
+        body: JSON.stringify({}) // Empty body, or add filters if needed for all docs
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+        throw new Error(`Failed to fetch documents: ${errorData.detail || response.statusText}`);
+      }
+      const docsData: Array<{external_id: string, filename: string, metadata: any}> = await response.json();
+      setAvailableDocuments(
+        docsData.map(doc => ({
+          value: doc.external_id,
+          // Use filename or a title from metadata if available
+          label: doc.filename || doc.metadata?.title || doc.external_id 
+        }))
+      );
+    } catch (err: unknown) {
+      const fetchError = err as Error;
+      console.error("Error fetching available documents:", fetchError);
+      // Optionally set an error state here to show in the UI
+      setError(`Error fetching documents: ${fetchError.message}`);
+      setAvailableDocuments([]); // Clear available documents on error
+    } finally {
+      setFetchingDocs(false);
+    }
+  }, [apiBaseUrl, authToken, createHeaders]);
+
+  // Fetch documents when the create dialog is opened
+  useEffect(() => {
+    if (showCreateDialog) {
+      fetchAvailableDocuments();
+    }
+  }, [showCreateDialog, fetchAvailableDocuments]);
 
   // Fetch graphs on component mount
   useEffect(() => {
@@ -498,23 +544,17 @@ const GraphSection: React.FC<GraphSectionProps> = ({
                       <h3 className="text-md mb-3 font-medium">Document Selection</h3>
                       <div className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="graph-documents">Document IDs (Optional)</Label>
-                          <Textarea
-                            id="graph-documents"
-                            placeholder="Enter document IDs separated by commas"
-                            value={graphDocuments.join(", ")}
-                            onChange={e =>
-                              setGraphDocuments(
-                                e.target.value
-                                  .split(",")
-                                  .map(id => id.trim())
-                                  .filter(id => id)
-                              )
-                            }
-                            className="min-h-[80px]"
+                          <Label htmlFor="graph-documents-select">Select Documents (Optional)</Label>
+                          <MultiSelectDropdown
+                            options={availableDocuments}
+                            selectedValues={graphDocuments}
+                            onChange={setGraphDocuments}
+                            placeholder={fetchingDocs ? "Loading documents..." : "Select documents to include"}
+                            disabled={fetchingDocs}
+                            triggerClassName="w-full"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Specify document IDs to include in the graph, or leave empty and use filters below.
+                            Choose specific documents for the graph, or use filters below.
                           </p>
                         </div>
 

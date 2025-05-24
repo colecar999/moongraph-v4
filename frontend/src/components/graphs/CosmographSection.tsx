@@ -11,6 +11,14 @@ import {
 import { Button } from '../ui/button';
 import { Slider } from '../ui/slider';
 import { Input } from '../ui/input';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../ui/card';
 
 import { CosmographProvider } from '@cosmograph/react';
 
@@ -276,15 +284,18 @@ const CosmographSection: React.FC<CosmographSectionProps> = ({ apiBaseUrl, authT
   }, [selectedNode, vizNodes]); // Re-run if selectedNode or vizNodes changes.
 
   return (
-    <div className="p-8 w-full h-full flex flex-col items-center justify-center">
-      <h1 className="text-2xl font-bold mb-4">Cosmograph Visualization</h1>
-      <div className="mb-6 w-full max-w-3xl flex flex-col items-center">
-        <div className="flex flex-row items-end gap-6 w-full mb-4">
-          {/* Graph Selector */}
-          <div>
+    <div className="flex flex-col gap-4 px-4 lg:px-6">
+      {/* Main Visualization Card */}
+      <Card className="@container/card">
+        <CardHeader>
+          <CardTitle>Graph Visualization</CardTitle>
+          <CardDescription>
+            Interactive network graph showing relationships between entities
+          </CardDescription>
+          <CardAction>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="w-64 justify-between">
+                <Button variant="outline" size="sm">
                   {selectedGraph ? selectedGraph.name : 'Select a graph'}
                 </Button>
               </DropdownMenuTrigger>
@@ -307,192 +318,194 @@ const CosmographSection: React.FC<CosmographSectionProps> = ({ apiBaseUrl, authT
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-            {selectedGraph && (
-              <div className="mt-2 text-muted-foreground text-xs text-center">
-                Selected graph: <span className="font-semibold">{selectedGraph.name}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="w-full h-[600px] bg-muted rounded-lg flex items-center justify-center">
-        {/* Cosmograph graph will be rendered here */}
-        {graphLoading ? (
-          <span className="text-muted-foreground">Loading graph...</span>
-        ) : graphError ? (
-          <span className="text-destructive">{graphError}</span>
-        ) : graphData && vizNodes.length > 0 ? (
-          <>
-            <div className="w-full h-full relative">
-              {/* Search Field (upper right, single floating element) */}
-              <Input
-                type="text"
-                placeholder="Search..."
-                value={searchValue}
-                onChange={e => setSearchValue(e.target.value)}
-                className="bg-background/70 text-white border-white/70 focus:border-white focus:ring-0 text-xs px-2 py-1 rounded"
-                style={{
-                  position: 'absolute',
-                  top: 24,
-                  right: 24,
-                  minWidth: 180,
-                  maxWidth: 220,
-                  width: 200,
-                  background: 'rgba(30,30,30,0.55)',
-                  borderRadius: 8,
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                  zIndex: 20,
-                  border: '1px solid rgba(255,255,255,0.7)',
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                }}
-                onFocus={() => setSearchOpen(searchResults.length > 0)}
-                onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
-              />
-              {/* Search Results Dropdown */}
-              {searchOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 72,
-                    right: 24,
-                    minWidth: 180,
-                    maxWidth: 220,
-                    width: 200,
-                    background: 'rgba(30,30,30,0.95)',
-                    borderRadius: 8,
-                    border: '1px solid rgba(255,255,255,0.7)',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                    zIndex: 30,
-                    maxHeight: 180,
-                    overflowY: 'auto',
-                  }}
-                >
-                  {searchResults.map((node, idx) => (
+          </CardAction>
+        </CardHeader>
+        <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+          <div className="w-full h-[600px] bg-muted rounded-lg flex items-center justify-center relative">
+            {/* Graph content */}
+            {graphLoading ? (
+              <span className="text-muted-foreground">Loading graph...</span>
+            ) : graphError ? (
+              <span className="text-destructive">{graphError}</span>
+            ) : graphData && vizNodes.length > 0 ? (
+              <>
+                <div className="w-full h-full relative">
+                  {/* Search Field (upper right overlay) */}
+                  <Input
+                    type="text"
+                    placeholder="Search..."
+                    value={searchValue}
+                    onChange={e => setSearchValue(e.target.value)}
+                    className="bg-background/70 text-white border-white/70 focus:border-white focus:ring-0 text-xs px-2 py-1 rounded"
+                    style={{
+                      position: 'absolute',
+                      top: 24,
+                      right: 24,
+                      minWidth: 180,
+                      maxWidth: 220,
+                      width: 200,
+                      background: 'rgba(30,30,30,0.55)',
+                      borderRadius: 8,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                      zIndex: 20,
+                      border: '1px solid rgba(255,255,255,0.7)',
+                      backdropFilter: 'blur(8px)',
+                      WebkitBackdropFilter: 'blur(8px)',
+                    }}
+                    onFocus={() => setSearchOpen(searchResults.length > 0)}
+                    onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                  />
+                  
+                  {/* Search Results Dropdown */}
+                  {searchOpen && (
                     <div
-                      key={node.id}
-                      className="px-3 py-1 text-xs text-white/90 cursor-pointer hover:bg-white/10"
-                      onMouseDown={e => {
-                        e.preventDefault();
-                        setSelectedNode(node.id);
-                        setSelectedType(null);
-                        setSearchValue(node.label);
-                        setSearchOpen(false);
-                        if (cosmographRef.current?.zoomToNode) {
-                          cosmographRef.current.zoomToNode({ id: node.id });
-                        }
+                      style={{
+                        position: 'absolute',
+                        top: 72,
+                        right: 24,
+                        minWidth: 180,
+                        maxWidth: 220,
+                        width: 200,
+                        background: 'rgba(30,30,30,0.95)',
+                        borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.7)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                        zIndex: 30,
+                        maxHeight: 180,
+                        overflowY: 'auto',
                       }}
                     >
-                      {node.label}
+                      {searchResults.map((node, idx) => (
+                        <div
+                          key={node.id}
+                          className="px-3 py-1 text-xs text-white/90 cursor-pointer hover:bg-white/10"
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            setSelectedNode(node.id);
+                            setSelectedType(null);
+                            setSearchValue(node.label);
+                            setSearchOpen(false);
+                            if (cosmographRef.current?.zoomToNode) {
+                              cosmographRef.current.zoomToNode({ id: node.id });
+                            }
+                          }}
+                        >
+                          {node.label}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-              <ErrorBoundary>
-                <CosmographProvider nodes={vizNodes} links={vizLinks}>
-                  <Cosmograph
-                    ref={cosmographRef}
-                    nodes={vizNodes}
-                    links={vizLinks}
-                    nodeColor={(node: any) => {
-                      if (!isNodeSelected && !isTypeSelected) return typeColors[(node as any).type || 'Unknown'];
-                      return highlightedNodes.has(node.id)
-                        ? typeColors[(node as any).type || 'Unknown']
-                        : 'rgba(180,180,180,0.3)'; // dim non-highlighted
-                    }}
-                    linkColor={(link: any) => {
-                      if (!isNodeSelected && !isTypeSelected) {
-                        const shade = Math.round(linkShade * 255);
-                        return `rgb(${shade},${shade},${shade})`;
-                      }
-                      const key = `${link.source}--${link.target}`;
-                      if (highlightedLinks.has(key)) {
-                        return '#fff'; // highlight color
-                      }
-                      return 'rgba(180,180,180,0.2)'; // dim
-                    }}
-                    nodeSize={(node: any) => {
-                      if (!isNodeSelected && !isTypeSelected) return nodeSize;
-                      return highlightedNodes.has(node.id) ? nodeSize * 1.3 : nodeSize * 0.8;
-                    }}
-                    linkWidth={(link: any) => {
-                      if (!isNodeSelected && !isTypeSelected) return linkWidth;
-                      const key = `${link.source}--${link.target}`;
-                      return highlightedLinks.has(key) ? linkWidth * 1.5 : linkWidth * 0.7;
-                    }}
-                    showDynamicLabels={isDefaultState}
-                    showTopLabels={false}
-                    showLabelsFor={showLabelsFor}
-                    simulationLinkDistance={linkDistance}
-                    simulationLinkSpring={linkStrength}
-                    simulationRepulsion={nodeRepulsion}
-                    simulationGravity={gravity}
-                    onClick={(node: any) => {
-                      setSelectedNode(node?.id || null);
-                      setSelectedType(null);
-                    }}
-                    backgroundColor="#000"
-                  />
-                </CosmographProvider>
-              </ErrorBoundary>
-              {/* Overlay to clear selection on background click */}
-              {(isNodeSelected || isTypeSelected) && (
-                <div
-                  style={{ position: 'absolute', inset: 0, zIndex: 1, cursor: 'pointer' }}
-                  onClick={e => {
-                    setSelectedNode(null);
-                    setSelectedType(null);
-                    setSearchValue('');
-                  }}
-                  tabIndex={-1}
-                  aria-label="Clear selection"
-                />
-              )}
-              {/* Floating Legend Card */}
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: 24,
-                  right: 24,
-                  background: 'rgba(30,30,30,0.55)',
-                  borderRadius: 8,
-                  padding: 16,
-                  maxHeight: 220,
-                  minWidth: 180,
-                  overflowY: 'auto',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                  zIndex: 10,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  border: '1px solid rgba(255,255,255,0.7)',
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                }}
-              >
-                <div className="font-semibold text-xs mb-2 text-white/80 tracking-wide">Legend</div>
-                {typeList.map(type => (
+                  )}
+                  
+                  {/* Graph Canvas */}
+                  <ErrorBoundary>
+                    <CosmographProvider nodes={vizNodes} links={vizLinks}>
+                      <Cosmograph
+                        ref={cosmographRef}
+                        nodes={vizNodes}
+                        links={vizLinks}
+                        nodeColor={(node: any) => {
+                          if (!isNodeSelected && !isTypeSelected) return typeColors[(node as any).type || 'Unknown'];
+                          return highlightedNodes.has(node.id)
+                            ? typeColors[(node as any).type || 'Unknown']
+                            : 'rgba(180,180,180,0.3)'; // dim non-highlighted
+                        }}
+                        linkColor={(link: any) => {
+                          if (!isNodeSelected && !isTypeSelected) {
+                            const shade = Math.round(linkShade * 255);
+                            return `rgb(${shade},${shade},${shade})`;
+                          }
+                          const key = `${link.source}--${link.target}`;
+                          if (highlightedLinks.has(key)) {
+                            return '#fff'; // highlight color
+                          }
+                          return 'rgba(180,180,180,0.2)'; // dim
+                        }}
+                        nodeSize={(node: any) => {
+                          if (!isNodeSelected && !isTypeSelected) return nodeSize;
+                          return highlightedNodes.has(node.id) ? nodeSize * 1.3 : nodeSize * 0.8;
+                        }}
+                        linkWidth={(link: any) => {
+                          if (!isNodeSelected && !isTypeSelected) return linkWidth;
+                          const key = `${link.source}--${link.target}`;
+                          return highlightedLinks.has(key) ? linkWidth * 1.5 : linkWidth * 0.7;
+                        }}
+                        showDynamicLabels={isDefaultState}
+                        showTopLabels={false}
+                        showLabelsFor={showLabelsFor}
+                        simulationLinkDistance={linkDistance}
+                        simulationLinkSpring={linkStrength}
+                        simulationRepulsion={nodeRepulsion}
+                        simulationGravity={gravity}
+                        onClick={(node: any) => {
+                          setSelectedNode(node?.id || null);
+                          setSelectedType(null);
+                        }}
+                        backgroundColor="#000"
+                      />
+                    </CosmographProvider>
+                  </ErrorBoundary>
+                  
+                  {/* Overlay to clear selection on background click */}
+                  {(isNodeSelected || isTypeSelected) && (
+                    <div
+                      style={{ position: 'absolute', inset: 0, zIndex: 1, cursor: 'pointer' }}
+                      onClick={e => {
+                        setSelectedNode(null);
+                        setSelectedType(null);
+                        setSearchValue('');
+                      }}
+                      tabIndex={-1}
+                      aria-label="Clear selection"
+                    />
+                  )}
+                  
+                  {/* Floating Legend Panel */}
                   <div
-                    key={type}
-                    className={`flex items-center gap-2 mb-1 cursor-pointer ${selectedType === type ? 'ring-2 ring-white' : ''}`}
-                    onClick={() => {
-                      setSelectedType(selectedType === type ? null : type);
-                      setSelectedNode(null);
+                    style={{
+                      position: 'absolute',
+                      bottom: 24,
+                      right: 24,
+                      background: 'rgba(30,30,30,0.55)',
+                      borderRadius: 8,
+                      padding: 16,
+                      maxHeight: 220,
+                      minWidth: 180,
+                      overflowY: 'auto',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                      zIndex: 10,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                      border: '1px solid rgba(255,255,255,0.7)',
+                      backdropFilter: 'blur(8px)',
+                      WebkitBackdropFilter: 'blur(8px)',
                     }}
                   >
-                    <span style={{ background: typeColors[type], width: 14, height: 14, borderRadius: '50%', display: 'inline-block' }} />
-                    <span className="capitalize text-xs text-white/90">{type}</span>
+                    <div className="font-semibold text-xs mb-2 text-white/80 tracking-wide">Legend</div>
+                    {typeList.map(type => (
+                      <div
+                        key={type}
+                        className={`flex items-center gap-2 mb-1 cursor-pointer ${selectedType === type ? 'ring-2 ring-white' : ''}`}
+                        onClick={() => {
+                          setSelectedType(selectedType === type ? null : type);
+                          setSelectedNode(null);
+                        }}
+                      >
+                        <span style={{ background: typeColors[type], width: 14, height: 14, borderRadius: '50%', display: 'inline-block' }} />
+                        <span className="capitalize text-xs text-white/90">{type}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : selectedGraph ? (
-          <span className="text-muted-foreground">No nodes to display in this graph.</span>
-        ) : (
-          <span className="text-muted-foreground">Select a graph to visualize.</span>
-        )}
-      </div>
+                </div>
+              </>
+            ) : selectedGraph ? (
+              <span className="text-muted-foreground">No nodes to display in this graph.</span>
+            ) : (
+              <span className="text-muted-foreground">Select a graph to visualize.</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

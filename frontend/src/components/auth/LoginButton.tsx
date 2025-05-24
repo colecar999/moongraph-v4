@@ -66,18 +66,18 @@ export default function LoginButton() {
     return (
       <div style={{ padding: '20px', maxWidth: '600px', border: '1px solid #ccc', borderRadius: '8px' }}>
         <div style={{ marginBottom: '20px' }}>
-          {session.user?.email && (
-            <p>
+        {session.user?.email && (
+          <p>
               Signed in as <strong>{session.user.email}</strong> <br />
               <small>Auth0 User ID: {extendedSession.user?.id}</small>
-            </p>
-          )}
-          <button 
-            onClick={() => signOut()} 
+          </p>
+        )}
+        <button 
+          onClick={() => signOut()} 
             style={{ padding: '10px', marginTop: '10px', cursor: 'pointer', marginRight: '10px' }}
-          >
-            Sign out
-          </button>
+        >
+          Sign out
+        </button>
           <button 
             onClick={testApiCall}
             disabled={loading}

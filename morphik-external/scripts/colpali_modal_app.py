@@ -90,7 +90,7 @@ class ColpaliModalService:
                 memory_reserved = torch.cuda.memory_reserved(0) / 1024**3
                 print(f"ColpaliModalService: Model loaded. GPU memory allocated: {memory_allocated:.2f} GB, reserved: {memory_reserved:.2f} GB")
             else:
-                print(f"ColpaliModalService: Model and processor loaded on {self.device}.")
+            print(f"ColpaliModalService: Model and processor loaded on {self.device}.")
         except Exception as e:
             print(f"ColpaliModalService: Exception during __init__: {e}")
             raise
@@ -157,10 +157,10 @@ class ColpaliModalService:
                 
                 if processed_batch:
                     try:
-                        with torch.no_grad():
-                            embedding_tensor = self.model(**processed_batch)
-                        current_batch_embeddings_np = embedding_tensor.to(torch.float32).cpu().numpy().tolist()
-                        all_embeddings_list.extend(current_batch_embeddings_np)
+                    with torch.no_grad():
+                        embedding_tensor = self.model(**processed_batch)
+                    current_batch_embeddings_np = embedding_tensor.to(torch.float32).cpu().numpy().tolist()
+                    all_embeddings_list.extend(current_batch_embeddings_np)
                         
                         # Clear memory after each batch
                         del embedding_tensor

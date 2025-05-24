@@ -124,36 +124,36 @@ class ColpaliModalService:
         from colpali_engine.models import ColQwen2_5, ColQwen2_5_Processor
         
         try:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-            print(f"ColpaliModalService: Initializing model on device: {self.device}")
-            
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"ColpaliModalService: Initializing model on device: {self.device}")
+        
             # Clear any existing GPU memory
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 print(f"Initial GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
             
-            hf_token = os.environ.get("HUGGINGFACE_TOKEN")
-            self.service_api_key = os.environ.get("SERVICE_API_KEY")
-            
-            if not self.service_api_key:
-                print("CRITICAL WARNING: SERVICE_API_KEY is not set! Endpoint will be unsecured.")
-            
-            model_name = "tsystems/colqwen2.5-3b-multilingual-v1.0"
-            
-            self.model = ColQwen2_5.from_pretrained(
-                model_name,
-                torch_dtype=torch.bfloat16,
-                device_map=self.device,
+        hf_token = os.environ.get("HUGGINGFACE_TOKEN")
+        self.service_api_key = os.environ.get("SERVICE_API_KEY")
+
+        if not self.service_api_key:
+            print("CRITICAL WARNING: SERVICE_API_KEY is not set! Endpoint will be unsecured.")
+
+        model_name = "tsystems/colqwen2.5-3b-multilingual-v1.0"
+        
+        self.model = ColQwen2_5.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+            device_map=self.device,
                 attn_implementation="eager",  # Better memory efficiency
-                token=hf_token,
-                cache_dir="/cache/huggingface/models"
-            ).eval()
-            
-            self.processor = ColQwen2_5_Processor.from_pretrained(
-                model_name,
-                token=hf_token,
-                cache_dir="/cache/huggingface/hub"
-            )
+            token=hf_token,
+            cache_dir="/cache/huggingface/models"
+        ).eval()
+        
+        self.processor = ColQwen2_5_Processor.from_pretrained(
+            model_name,
+            token=hf_token,
+            cache_dir="/cache/huggingface/hub"
+        )
             
             # Clear memory after model loading
             if torch.cuda.is_available():
@@ -194,10 +194,10 @@ class ColpaliModalService:
         
         input_type = payload.input_type
         inputs_data = payload.inputs
-        
+
         if not inputs_data:
             return {"embeddings": []}
-            
+
         print(f"Processing: input_type='{input_type}', num_inputs={len(inputs_data)}")
         
         # Log initial GPU memory state
@@ -205,18 +205,18 @@ class ColpaliModalService:
             memory_allocated = torch.cuda.memory_allocated(0) / 1024**3
             memory_reserved = torch.cuda.memory_reserved(0) / 1024**3
             print(f"Pre-processing GPU memory - allocated: {memory_allocated:.2f} GB, reserved: {memory_reserved:.2f} GB")
-        
+
         all_embeddings_list = []
         # Optimized batch sizes to prevent OOM
         batch_size = 4 if input_type == "text" else 1  # Process images one at a time
-        
+
         try:
             for i in range(0, len(inputs_data), batch_size):
                 batch_input_data = inputs_data[i:i + batch_size]
                 processed_batch = None
                 
                 print(f"Processing batch {i//batch_size + 1}/{(len(inputs_data) + batch_size - 1)//batch_size}")
-                
+
                 if input_type == "image":
                     pil_images = [self._decode_image(b64_str) for b64_str in batch_input_data]
                     if not pil_images: continue
@@ -227,13 +227,13 @@ class ColpaliModalService:
                     processed_batch = self.processor.process_queries(batch_input_data).to(self.device)
                 else:
                     return JSONResponse(content={"error": "Invalid input_type"}, status_code=400)
-                
+
                 if processed_batch:
                     try:
-                        with torch.no_grad():
-                            embedding_tensor = self.model(**processed_batch)
-                        current_batch_embeddings_np = embedding_tensor.to(torch.float32).cpu().numpy().tolist()
-                        all_embeddings_list.extend(current_batch_embeddings_np)
+                    with torch.no_grad():
+                        embedding_tensor = self.model(**processed_batch)
+                    current_batch_embeddings_np = embedding_tensor.to(torch.float32).cpu().numpy().tolist()
+                    all_embeddings_list.extend(current_batch_embeddings_np)
                         
                         # Clear memory after each batch
                         del embedding_tensor
