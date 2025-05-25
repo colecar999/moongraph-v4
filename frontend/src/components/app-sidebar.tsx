@@ -82,7 +82,7 @@ const data = {
   documents: [
     {
       name: "Files",
-      url: "/documents/files",
+      url: "/documents",
       icon: IconFile,
     },
     {
