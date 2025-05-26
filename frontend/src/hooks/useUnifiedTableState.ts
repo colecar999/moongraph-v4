@@ -11,20 +11,20 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import { documentColumns } from "@/components/documents/table-columns"
-import { Document } from "@/components/types"
+import { unifiedContentColumns } from "@/components/unified/unified-table-columns"
+import { UnifiedContentItem } from "@/hooks/useUnifiedContent"
 
-interface UseDocumentTableStateProps {
-  documents: Document[]
-  onDocumentClick: (document: Document, event: React.MouseEvent) => void
+interface UseUnifiedTableStateProps {
+  content: UnifiedContentItem[]
+  onItemClick: (item: UnifiedContentItem, event: React.MouseEvent) => void
   onSelectionChange?: (selectedIds: string[]) => void
 }
 
-export function useDocumentTableState({ 
-  documents, 
-  onDocumentClick, 
+export function useUnifiedTableState({ 
+  content, 
+  onItemClick, 
   onSelectionChange 
-}: UseDocumentTableStateProps) {
+}: UseUnifiedTableStateProps) {
   // Table state
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -37,8 +37,8 @@ export function useDocumentTableState({
 
   // Initialize table
   const table = useReactTable({
-    data: documents,
-    columns: documentColumns,
+    data: content,
+    columns: unifiedContentColumns,
     state: {
       sorting,
       columnVisibility,
@@ -46,7 +46,7 @@ export function useDocumentTableState({
       rowSelection,
       pagination,
     },
-    getRowId: (row) => row.external_id,
+    getRowId: (row) => row.id,
     enableRowSelection: true,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -71,6 +71,6 @@ export function useDocumentTableState({
 
   return {
     table,
-    handleDocumentClick: onDocumentClick,
+    handleItemClick: onItemClick,
   }
 } 

@@ -64,7 +64,8 @@ export interface Folder {
   name: string;
   description?: string;
   owner: string;
-  document_ids: string[];
+  document_ids?: string[]; // Optional - deprecated in favor of document_count
+  document_count?: number; // New field for document count
   system_metadata: Record<string, unknown>;
   access_control?: Record<string, unknown>;
   created_at?: string;

@@ -196,37 +196,31 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
           documentsToFetch = await response.json();
           console.log(`fetchDocuments: Fetched ${documentsToFetch.length} total documents`);
         } else {
-          // Fetch documents for a specific folder
+          // Fetch documents for a specific folder using GET /folders/{folder_id}/documents
           console.log(`fetchDocuments: Fetching documents for folder: ${selectedFolder}`);
           const targetFolder = folders.find(folder => folder.name === selectedFolder);
 
-          if (targetFolder && Array.isArray(targetFolder.document_ids) && targetFolder.document_ids.length > 0) {
-            // Folder found and has documents, fetch them by ID
-            console.log(
-              `fetchDocuments: Folder found with ${targetFolder.document_ids.length} IDs. Fetching details...`
-            );
-            const response = await fetch(`${effectiveApiUrl}/batch/documents`, {
-              method: "POST",
+          if (targetFolder) {
+            console.log(`fetchDocuments: Found folder ${selectedFolder} with ID: ${targetFolder.id}`);
+            
+            const response = await fetch(`${effectiveApiUrl}/folders/${targetFolder.id}/documents`, {
+              method: "GET",
               headers: {
                 "Content-Type": "application/json",
                 ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
               },
-              body: JSON.stringify({ document_ids: targetFolder.document_ids }),
             });
+
             if (!response.ok) {
-              throw new Error(`Failed to fetch batch documents: ${response.statusText}`);
+              throw new Error(`Failed to fetch documents for folder: ${response.statusText}`);
             }
-            documentsToFetch = await response.json();
-            console.log(`fetchDocuments: Fetched details for ${documentsToFetch.length} documents`);
+
+            const folderDocuments = await response.json();
+            console.log(`fetchDocuments: Fetched ${folderDocuments.length} documents for folder ${selectedFolder}`);
+            setDocuments(folderDocuments);
           } else {
-            // Folder not found, or folder is empty
-            if (targetFolder) {
-              console.log(`fetchDocuments: Folder ${selectedFolder} found but is empty.`);
-            } else {
-              console.log(`fetchDocuments: Folder ${selectedFolder} not found in current state.`);
-            }
-            // In either case, the folder contains no documents to display
-            documentsToFetch = [];
+            console.error(`fetchDocuments: Folder ${selectedFolder} not found in folders list`);
+            setDocuments([]);
           }
         }
 
@@ -678,23 +672,35 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
       formData.append("rules", rulesRef);
       formData.append("use_colpali", String(useColpaliRef));
 
-      // If we're in a specific folder (not "all" documents), add the folder_name to form data
+      // The API expects folder_id as a direct Form parameter
+      // This will be used by document_service.db.add_document_to_folder()
+      formData.set("metadata", metadataRef);
+      
+      // If we're in a specific folder (not "all" documents), add the folder_id to form data
       if (selectedFolder && selectedFolder !== "all") {
         try {
           // Parse metadata to validate it's proper JSON, but don't modify it
           JSON.parse(metadataRef || "{}");
 
-          // The API expects folder_name as a direct Form parameter
-          // This will be used by document_service._ensure_folder_exists()
-          formData.set("metadata", metadataRef);
-          formData.append("folder_name", selectedFolder);
+          // Find the folder object to get its ID
+          const targetFolder = folders.find(folder => folder.name === selectedFolder);
+          if (targetFolder?.id) {
+            formData.append("folder_id", targetFolder.id);
+            console.log(`Adding file to folder: ${selectedFolder} (ID: ${targetFolder.id}) as form field`);
+          } else {
+            console.error(`Could not find folder ID for folder: ${selectedFolder}`);
+          }
 
           // Log for debugging
           console.log(`Adding file to folder: ${selectedFolder} as form field`);
         } catch (e) {
           console.error("Error parsing metadata:", e);
-          formData.set("metadata", metadataRef);
-          formData.append("folder_name", selectedFolder);
+          
+          // Find the folder object to get its ID even in error case
+          const targetFolder = folders.find(folder => folder.name === selectedFolder);
+          if (targetFolder?.id) {
+            formData.append("folder_id", targetFolder.id);
+          }
         }
       }
 
@@ -825,10 +831,16 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
       // Add metadata to all cases
       formData.append("metadata", metadataRef);
 
-      // If we're in a specific folder (not "all" documents), add the folder_name as a separate field
+      // If we're in a specific folder (not "all" documents), add the folder_id as a separate field
       if (selectedFolder && selectedFolder !== "all") {
-        // The API expects folder_name directly, not ID
-        formData.append("folder_name", selectedFolder);
+        // Find the folder object to get its ID
+        const targetFolder = folders.find(folder => folder.name === selectedFolder);
+        if (targetFolder?.id) {
+          formData.append("folder_id", targetFolder.id);
+          console.log(`Adding batch files to folder: ${selectedFolder} (ID: ${targetFolder.id}) as form field`);
+        } else {
+          console.error(`Could not find folder ID for folder: ${selectedFolder}`);
+        }
 
         // Log for debugging
         console.log(`Adding batch files to folder: ${selectedFolder} as form field`);
@@ -953,17 +965,21 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
     // Save content before resetting
     const textContentRef = text;
     let metadataObj = {};
-    let folderToUse = null;
+    let folderIdToUse = null;
 
     try {
       metadataObj = JSON.parse(meta || "{}");
 
-      // If we're in a specific folder (not "all" documents), set folder variable
+      // If we're in a specific folder (not "all" documents), set folder ID variable
       if (selectedFolder && selectedFolder !== "all") {
-        // The API expects the folder name directly
-        folderToUse = selectedFolder;
-        // Log for debugging
-        console.log(`Will add text document to folder: ${selectedFolder}`);
+        // Find the folder object to get its ID
+        const targetFolder = folders.find(folder => folder.name === selectedFolder);
+        if (targetFolder?.id) {
+          folderIdToUse = targetFolder.id;
+          console.log(`Will add text document to folder: ${selectedFolder} (ID: ${targetFolder.id})`);
+        } else {
+          console.error(`Could not find folder ID for folder: ${selectedFolder}`);
+        }
       }
     } catch (e) {
       console.error("Error parsing metadata JSON:", e);
@@ -989,7 +1005,7 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
           content: textContentRef,
           metadata: metadataObj,
           rules: JSON.parse(rulesRef || "[]"),
-          folder_name: folderToUse,
+          folder_id: folderIdToUse,
           use_colpali: useColpaliRef,
         }),
       })
@@ -1272,6 +1288,7 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
                 refreshFolders={fetchFolders}
                 loading={loading}
                 onClose={() => setSelectedDocument(null)}
+                selectedFolder={selectedFolder}
               />
             </div>
           )}

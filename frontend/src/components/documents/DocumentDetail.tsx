@@ -22,6 +22,7 @@ interface DocumentDetailProps {
   refreshFolders: () => void;
   loading: boolean;
   onClose: () => void;
+  selectedFolder: string | null;
 }
 
 const DocumentDetail: React.FC<DocumentDetailProps> = ({
@@ -34,6 +35,7 @@ const DocumentDetail: React.FC<DocumentDetailProps> = ({
   refreshFolders,
   loading,
   onClose,
+  selectedFolder,
 }) => {
   const [isMovingToFolder, setIsMovingToFolder] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -49,7 +51,18 @@ const DocumentDetail: React.FC<DocumentDetailProps> = ({
     );
   }
 
-  const currentFolder = selectedDocument.system_metadata?.folder_name as string | undefined;
+  // Helper function to determine current folder from context
+  const getCurrentFolder = () => {
+    // Since we're viewing documents in a specific folder context, 
+    // we can determine the current folder from the selectedFolder prop
+    // passed down from the parent component
+    if (selectedFolder && selectedFolder !== "all") {
+      return folders.find(folder => folder.name === selectedFolder);
+    }
+    return null;
+  };
+
+  const currentFolder = getCurrentFolder();
 
   const handleDeleteConfirm = async () => {
     if (selectedDocument) {
@@ -65,48 +78,71 @@ const DocumentDetail: React.FC<DocumentDetailProps> = ({
     setIsMovingToFolder(true);
 
     try {
-      // First, get the folder ID from the name if a name is provided
-      if (folderName) {
-        // Find the target folder by name
+      if (folderName === null) {
+        // Remove from any folder (set folder_id to NULL) using bulk-move endpoint
+        console.log(`Removing document ${documentId} from any folder (setting to unfiled)`);
+        
+        const response = await fetch(`${apiBaseUrl}/documents/bulk-move`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            document_ids: [documentId],
+            folder_id: null // This will set folder_id to NULL
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to remove document from folder: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(`Failed to remove document from folder: ${result.errors?.[0]?.error || 'Unknown error'}`);
+        }
+      } else {
+        // Move to a specific folder using bulk-move endpoint
         const targetFolder = folders.find(folder => folder.name === folderName);
         if (targetFolder && targetFolder.id) {
-          console.log(`Found folder with ID: ${targetFolder.id} for name: ${folderName}`);
+          console.log(`Moving document ${documentId} to folder ${folderName} (ID: ${targetFolder.id})`);
 
-          // Add to folder using folder ID
-          await fetch(`${apiBaseUrl}/folders/${targetFolder.id}/documents/${documentId}`, {
+          const response = await fetch(`${apiBaseUrl}/documents/bulk-move`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
             },
+            body: JSON.stringify({
+              document_ids: [documentId],
+              folder_id: targetFolder.id
+            }),
           });
+
+          if (!response.ok) {
+            throw new Error(`Failed to move document to folder: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          if (!result.success) {
+            throw new Error(`Failed to move document to folder: ${result.errors?.[0]?.error || 'Unknown error'}`);
+          }
         } else {
           console.error(`Could not find folder with name: ${folderName}`);
+          throw new Error(`Folder "${folderName}" not found`);
         }
       }
 
-      // If there's a current folder and we're either moving to a new folder or removing from folder
-      if (currentFolder) {
-        // Find the current folder ID
-        const currentFolderObj = folders.find(folder => folder.name === currentFolder);
-        if (currentFolderObj && currentFolderObj.id) {
-          // Remove from current folder using folder ID
-          await fetch(`${apiBaseUrl}/folders/${currentFolderObj.id}/documents/${documentId}`, {
-            method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-            },
-          });
-        }
-      }
-
-      // Refresh folders first to get updated document_ids
+      // Refresh folders first to get updated document counts
       await refreshFolders();
       // Then refresh documents with the updated folder information
       await refreshDocuments();
+      
+      console.log(`Successfully ${folderName ? `moved document to folder "${folderName}"` : 'removed document from folder'}`);
     } catch (error) {
       console.error("Error updating folder:", error);
+      // You might want to show an error message to the user here
     } finally {
       setIsMovingToFolder(false);
     }
@@ -152,7 +188,7 @@ const DocumentDetail: React.FC<DocumentDetailProps> = ({
             <div className="flex items-center gap-2">
               <Image src="/icons/folder-icon.png" alt="Folder" width={16} height={16} />
               <Select
-                value={currentFolder || "_none"}
+                value={currentFolder ? currentFolder.name : "_none"}
                 onValueChange={value => handleMoveToFolder(value === "_none" ? null : value)}
                 disabled={isMovingToFolder}
               >

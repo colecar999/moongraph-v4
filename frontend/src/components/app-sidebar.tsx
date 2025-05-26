@@ -86,6 +86,11 @@ const data = {
       icon: IconFile,
     },
     {
+      name: "Unified",
+      url: "/unified",
+      icon: IconChartBar,
+    },
+    {
       name: "Search",
       url: "/documents/search",
       icon: IconSearch,

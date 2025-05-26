@@ -260,7 +260,7 @@ export const mixedFolderColumns: ColumnDef<FolderType | AllDocumentsRow>[] = [
     },
   },
   {
-    accessorKey: "document_ids",
+    accessorKey: "document_count",
     header: "Documents",
     cell: ({ row }) => {
       const item = row.original
@@ -275,7 +275,7 @@ export const mixedFolderColumns: ColumnDef<FolderType | AllDocumentsRow>[] = [
       }
       
       const folder = item as FolderType
-      const count = folder.document_ids?.length || 0
+      const count = folder.document_count || 0
       return (
         <div className="flex items-center space-x-1">
           <Files className="h-3 w-3 text-muted-foreground" />

@@ -1,8 +1,39 @@
-"use client"
+'use client';
 
+import React, { useState, useMemo, useCallback } from 'react';
+import { useUnifiedContent, UnifiedContentItem } from '@/hooks/useUnifiedContent';
+import { useUnifiedTableState } from '@/hooks/useUnifiedTableState';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  IconArrowLeft, 
-  IconLayoutColumns, 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from '@/components/ui/table';
+import { 
+  IconArrowLeft,
+  IconLayoutColumns,
   IconChevronDown,
   IconChevronLeft,
   IconChevronRight,
@@ -12,124 +43,119 @@ import {
   IconFolder,
   IconTrash,
   IconDots,
-  IconX
-} from "@tabler/icons-react"
-import { flexRender } from "@tanstack/react-table"
+  IconX,
+  IconFilter
+} from '@tabler/icons-react';
+import { flexRender } from '@tanstack/react-table';
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { useDocumentTableState } from "@/hooks/use-document-table-state"
-import { documentColumns } from "@/components/documents/table-columns"
-import { Document, Folder } from "@/components/types"
-
-interface DocumentTableProps {
-  documents: Document[]
-  loading: boolean
-  title: string
-  onBack: () => void
-  onDocumentClick: (document: Document, event: React.MouseEvent) => void
-  additionalHeaderButtons?: React.ReactNode
-  folders?: Folder[]
-  currentFolderId?: string | null
-  onBulkMoveToFolder?: (documentIds: string[], folderId: string) => Promise<void>
-  onBulkDeleteDocuments?: (documentIds: string[]) => Promise<void>
-  onSelectionChange?: (selectedIds: string[]) => void
+interface UnifiedContentViewProps {
+  folderId?: string | null;
+  onItemClick?: (item: UnifiedContentItem) => void;
+  onBack?: () => void;
+  title?: string;
+  folders?: Array<{
+    id: string;
+    name: string;
+    document_count: number;
+    graph_count?: number;
+  }>;
+  onBulkMoveToFolder?: (itemIds: string[], folderId: string) => Promise<void>;
+  onBulkDeleteItems?: (itemIds: string[]) => Promise<void>;
 }
 
-export function DocumentTable({
-  documents,
-  loading,
-  title,
+export function UnifiedContentView({
+  folderId = null,
+  onItemClick,
   onBack,
-  onDocumentClick,
-  additionalHeaderButtons,
-  folders,
-  currentFolderId,
+  title = "Unified Content",
+  folders = [],
   onBulkMoveToFolder,
-  onBulkDeleteDocuments,
-  onSelectionChange,
-}: DocumentTableProps) {
-  const { table, handleDocumentClick } = useDocumentTableState({
-    documents,
-    onDocumentClick,
-    onSelectionChange,
-  })
+  onBulkDeleteItems,
+}: UnifiedContentViewProps) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [contentTypeFilter, setContentTypeFilter] = useState<'all' | 'document' | 'graph'>('all');
+  
+  const { content, loading, error, stats } = useUnifiedContent({ folderId });
 
-  const selectedRows = table.getFilteredSelectedRowModel().rows
-  const selectedDocumentIds = selectedRows.map(row => row.original.external_id)
-  const hasSelection = selectedDocumentIds.length > 0
-  const isInSpecificFolder = currentFolderId !== null && currentFolderId !== undefined
+  // Filter content by type
+  const filteredContent = useMemo(() => {
+    if (contentTypeFilter === 'all') return content;
+    return content.filter(item => item.content_type === contentTypeFilter);
+  }, [content, contentTypeFilter]);
 
-  const handleMoveToFolder = async (folderId: string) => {
-    if (!onBulkMoveToFolder || selectedDocumentIds.length === 0) {
-      return
+  // Memoized callbacks to prevent infinite loops
+  const handleSelectionChange = useCallback((selectedIds: string[]) => {
+    setSelectedIds(selectedIds);
+  }, []);
+
+  const handleItemClick = useCallback((item: UnifiedContentItem, event: React.MouseEvent) => {
+    // Don't trigger item click if clicking on checkbox
+    if ((event.target as HTMLElement).closest('[role="checkbox"]')) {
+      return;
     }
+    onItemClick?.(item);
+  }, [onItemClick]);
+
+  const handleBulkMoveToFolder = useCallback(async (folderId: string) => {
+    if (!onBulkMoveToFolder || selectedIds.length === 0) return;
     
     try {
-      await onBulkMoveToFolder(selectedDocumentIds, folderId)
-      // Clear selection after successful move
-      table.resetRowSelection()
+      await onBulkMoveToFolder(selectedIds, folderId);
+      setSelectedIds([]);
     } catch (error) {
-      console.error("Error moving documents:", error)
+      console.error("Error moving items:", error);
     }
-  }
+  }, [onBulkMoveToFolder, selectedIds]);
+
+  const handleBulkDeleteItems = useCallback(async () => {
+    if (!onBulkDeleteItems || selectedIds.length === 0) return;
+    
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`
+    );
+    if (!confirmed) return;
+
+    try {
+      await onBulkDeleteItems(selectedIds);
+      setSelectedIds([]);
+    } catch (error) {
+      console.error("Error deleting items:", error);
+    }
+  }, [onBulkDeleteItems, selectedIds]);
+
+  const handleBack = useCallback(() => {
+    onBack?.();
+  }, [onBack]);
+
+  const { table, handleItemClick: tableHandleItemClick } = useUnifiedTableState({
+    content: filteredContent,
+    onItemClick: handleItemClick,
+    onSelectionChange: handleSelectionChange,
+  });
+
+  const hasSelection = selectedIds.length > 0;
+  const isInSpecificFolder = folderId !== null && folderId !== undefined;
 
   const handleRemoveFromFolder = async () => {
-    if (!onBulkMoveToFolder || selectedDocumentIds.length === 0) {
-      return
-    }
+    if (!onBulkMoveToFolder || selectedIds.length === 0) return;
     
     try {
       // Empty string means remove from folder (set folder_id to null)
-      await onBulkMoveToFolder(selectedDocumentIds, "")
-      table.resetRowSelection()
+      await onBulkMoveToFolder(selectedIds, "");
+      setSelectedIds([]);
     } catch (error) {
-      console.error("Error removing documents from folder:", error)
+      console.error("Error removing items from folder:", error);
     }
-  }
+  };
 
-  const handleDeleteDocuments = async () => {
-    if (!onBulkDeleteDocuments || selectedDocumentIds.length === 0) {
-      return
-    }
-    
-    const confirmed = window.confirm(`Are you sure you want to delete ${selectedDocumentIds.length} document${selectedDocumentIds.length !== 1 ? 's' : ''}?`)
-    if (!confirmed) return
-
-    try {
-      await onBulkDeleteDocuments(selectedDocumentIds)
-      table.resetRowSelection()
-    } catch (error) {
-      console.error("Error deleting documents:", error)
-    }
-  }
-
-  const handleClearSelection = () => {
-    table.resetRowSelection()
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <p className="text-red-600">Error loading content: {error}</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -137,23 +163,42 @@ export function DocumentTable({
       {/* Header with breadcrumb and controls */}
       <div className="flex items-center justify-between px-4 lg:px-6 py-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <IconArrowLeft className="mr-2 h-4 w-4" />
-            Documents
-          </Button>
-          <span className="text-muted-foreground">/</span>
+          {onBack && (
+            <>
+              <Button variant="ghost" size="sm" onClick={handleBack}>
+                <IconArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <span className="text-muted-foreground">/</span>
+            </>
+          )}
           <span className="font-medium">{title}</span>
           
           <div className="flex items-center gap-2 ml-4">
             <IconSearch className="h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search documents..."
-              value={(table.getColumn("filename")?.getFilterValue() as string) ?? ""}
+              placeholder="Search content..."
+              value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
               onChange={(event) =>
-                table.getColumn("filename")?.setFilterValue(event.target.value)
+                table.getColumn("name")?.setFilterValue(event.target.value)
               }
               className="max-w-sm"
             />
+          </div>
+
+          {/* Content type filter */}
+          <div className="flex items-center gap-2">
+            <IconFilter className="h-4 w-4 text-muted-foreground" />
+            <Select value={contentTypeFilter} onValueChange={(value: 'all' | 'document' | 'graph') => setContentTypeFilter(value)}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="document">Documents</SelectItem>
+                <SelectItem value="graph">Graphs</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         
@@ -191,11 +236,11 @@ export function DocumentTable({
               {/* Move to folder options */}
               {folders && folders.length > 0 ? (
                 folders
-                  .filter(folder => folder.id !== currentFolderId) // Don't show current folder
+                  .filter(folder => folder.id !== folderId) // Don't show current folder
                   .map((folder) => (
                     <DropdownMenuItem
                       key={folder.id}
-                      onClick={() => handleMoveToFolder(folder.id)}
+                      onClick={() => handleBulkMoveToFolder(folder.id)}
                       disabled={loading || !hasSelection}
                     >
                       <IconFolder className="h-4 w-4 mr-2" />
@@ -214,7 +259,7 @@ export function DocumentTable({
           <Button
             variant="outline"
             size="sm"
-            onClick={handleDeleteDocuments}
+            onClick={handleBulkDeleteItems}
             disabled={loading || !hasSelection}
             className="flex items-center gap-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
           >
@@ -282,8 +327,6 @@ export function DocumentTable({
                 })}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          {additionalHeaderButtons}
         </div>
       </div>
 
@@ -312,8 +355,8 @@ export function DocumentTable({
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={documentColumns.length} className="h-24 text-center">
-                    Loading documents...
+                  <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
+                    Loading content...
                   </TableCell>
                 </TableRow>
               ) : table.getRowModel().rows?.length ? (
@@ -322,7 +365,7 @@ export function DocumentTable({
                     key={row.id}
                     data-state={row.getIsSelected() && "selected"}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={(event) => handleDocumentClick(row.original, event)}
+                    onClick={(event) => tableHandleItemClick(row.original, event)}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>
@@ -333,8 +376,8 @@ export function DocumentTable({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={documentColumns.length} className="h-24 text-center">
-                    No documents found.
+                  <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
+                    No content found.
                   </TableCell>
                 </TableRow>
               )}
@@ -420,5 +463,5 @@ export function DocumentTable({
         </div>
       </div>
     </div>
-  )
+  );
 } 

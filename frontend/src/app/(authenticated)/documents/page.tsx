@@ -89,7 +89,7 @@ function foldersToTableData(folders: Folder[], totalDocuments: number): FolderRo
     id: folder.id,
     name: folder.name,
     type: "folder" as const,
-    documentCount: folder.document_ids?.length || 0,
+    documentCount: folder.document_count || 0,
     lastModified: folder.updated_at ? new Date(folder.updated_at).toLocaleDateString() : "—",
     owner: "—" // TODO: Add owner info when available
   }))
