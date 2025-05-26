@@ -45,7 +45,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({ apiBaseUrl, authToken, on
     setSearchResults([]);
     const fetchFolders = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/folders`, {
+        const response = await fetch(`/api/folders`, {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         });
         if (response.ok) {

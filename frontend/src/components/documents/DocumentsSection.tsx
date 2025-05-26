@@ -152,18 +152,16 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
 
   // No need for a separate header function, use authToken directly
 
-  // Fetch all documents, optionally filtered by folder
+  // Fetch all documents
   const fetchDocuments = useCallback(
     async (source: string = "unknown") => {
       console.log(`fetchDocuments called from: ${source}, selectedFolder: ${selectedFolder}`);
-      // Ensure API URL is valid before proceeding
       if (!effectiveApiUrl) {
         console.error("fetchDocuments: No valid API URL available.");
         setLoading(false);
         return;
       }
 
-      // Immediately clear documents and set loading state if selectedFolder is null (folder grid view)
       if (selectedFolder === null) {
         console.log("fetchDocuments: No folder selected, clearing documents.");
         setDocuments([]);
@@ -171,7 +169,6 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
         return;
       }
 
-      // Set loading state only for initial load or when explicitly changing folders
       if (documents.length === 0 || source === "folders loaded or selectedFolder changed") {
         setLoading(true);
       }
@@ -180,15 +177,14 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
         let documentsToFetch: Document[] = [];
 
         if (selectedFolder === "all") {
-          // Fetch all documents for the "all" view
+          // Fetch all documents
           console.log("fetchDocuments: Fetching all documents");
-          const response = await fetch(`${effectiveApiUrl}/documents`, {
-            method: "POST", // Assuming POST is correct for fetching all
+          const response = await fetch(`/api/documents`, {
+            method: "GET",
             headers: {
               "Content-Type": "application/json",
               ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
             },
-            body: JSON.stringify({}), // Empty body for all documents
           });
           if (!response.ok) {
             throw new Error(`Failed to fetch all documents: ${response.statusText}`);
@@ -196,14 +192,14 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
           documentsToFetch = await response.json();
           console.log(`fetchDocuments: Fetched ${documentsToFetch.length} total documents`);
         } else {
-          // Fetch documents for a specific folder using GET /folders/{folder_id}/documents
+          // Fetch documents for a specific folder
           console.log(`fetchDocuments: Fetching documents for folder: ${selectedFolder}`);
           const targetFolder = folders.find(folder => folder.name === selectedFolder);
 
           if (targetFolder) {
             console.log(`fetchDocuments: Found folder ${selectedFolder} with ID: ${targetFolder.id}`);
             
-            const response = await fetch(`${effectiveApiUrl}/folders/${targetFolder.id}/documents`, {
+            const response = await fetch(`/api/folders/${targetFolder.id}/documents`, {
               method: "GET",
               headers: {
                 "Content-Type": "application/json",
@@ -215,16 +211,16 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
               throw new Error(`Failed to fetch documents for folder: ${response.statusText}`);
             }
 
-            const folderDocuments = await response.json();
-            console.log(`fetchDocuments: Fetched ${folderDocuments.length} documents for folder ${selectedFolder}`);
-            setDocuments(folderDocuments);
+            documentsToFetch = await response.json();
+            console.log(`fetchDocuments: Fetched ${documentsToFetch.length} documents for folder ${selectedFolder}`);
           } else {
             console.error(`fetchDocuments: Folder ${selectedFolder} not found in folders list`);
             setDocuments([]);
+            return;
           }
         }
 
-        // Process fetched documents (add status if needed)
+        // Process fetched documents
         const processedData = documentsToFetch.map((doc: Document) => {
           if (!doc.system_metadata) {
             doc.system_metadata = {};
@@ -235,7 +231,6 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
           return doc;
         });
 
-        // Update state
         setDocuments(processedData);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "An unknown error occurred";
@@ -245,13 +240,10 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
           title: "Error Fetching Documents",
           duration: 5000,
         });
-        // Clear documents on error to avoid showing stale/incorrect data
         setDocuments([]);
       } finally {
-        // Always ensure loading state is turned off
         setLoading(false);
       }
-      // Dependencies: URL, auth, selected folder, and the folder list itself
     },
     [effectiveApiUrl, authToken, selectedFolder, folders]
   );
@@ -261,7 +253,7 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
     console.log("fetchFolders called");
     setFoldersLoading(true);
     try {
-      const response = await fetch(`${effectiveApiUrl}/folders`, {
+      const response = await fetch(`/api/folders`, {
         method: "GET",
         headers: {
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
@@ -284,7 +276,7 @@ const DocumentsSection: React.FC<DocumentsSectionProps> = ({
     } finally {
       setFoldersLoading(false);
     }
-  }, [effectiveApiUrl, authToken, documents.length]);
+  }, [effectiveApiUrl, authToken]);
 
   // Function to refresh documents based on current folder state
   const refreshDocuments = useCallback(async () => {

@@ -67,7 +67,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     if (!apiBaseUrl) return;
     setLoadingGraphs(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/graphs`, {
+      const response = await fetch(`/api/graphs`, {
         headers: {
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
@@ -92,7 +92,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({
     if (!apiBaseUrl) return;
     setLoadingFolders(true);
     try {
-      const response = await fetch(`${apiBaseUrl}/folders`, {
+      const response = await fetch(`/api/folders`, {
         headers: {
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },

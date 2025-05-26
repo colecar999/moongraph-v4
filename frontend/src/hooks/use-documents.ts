@@ -50,7 +50,7 @@ export function useDocuments({
       if (!folderId) {
         // Fetch all documents using GET /documents
         console.log("useDocuments: Fetching all documents")
-        const response = await fetch(`${apiBaseUrl}/documents`, {
+        const response = await fetch(`/api/documents`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -69,7 +69,7 @@ export function useDocuments({
         // Fetch documents for a specific folder using GET /folders/{folder_id}/documents
         console.log(`useDocuments: Fetching documents for folder ID: ${folderId}`)
         
-        const response = await fetch(`${apiBaseUrl}/folders/${folderId}/documents`, {
+        const response = await fetch(`/api/folders/${folderId}/documents`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",

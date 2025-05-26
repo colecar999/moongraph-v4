@@ -34,9 +34,9 @@ export function useFolders({ apiBaseUrl, authToken }: UseFoldersProps): UseFolde
     if (!apiBaseUrl || !authToken) return
 
     try {
-      console.log("useFolders: Fetching folders with stats from", `${apiBaseUrl}/folders/stats`)
+      console.log("useFolders: Fetching folders with stats from", `/api/folders/stats`)
       
-      const response = await fetch(`${apiBaseUrl}/folders/stats`, {
+      const response = await fetch(`/api/folders/stats`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${authToken}`,

@@ -209,7 +209,7 @@ const CosmographSection: React.FC<CosmographSectionProps> = ({ apiBaseUrl, authT
     const fetchGraphs = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${apiBaseUrl}/graphs`, {
+        const res = await fetch(`/api/graphs`, {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         });
         if (!res.ok) throw new Error('Failed to fetch graphs');
@@ -234,7 +234,7 @@ const CosmographSection: React.FC<CosmographSectionProps> = ({ apiBaseUrl, authT
       setGraphLoading(true);
       setGraphError(null);
       try {
-        const res = await fetch(`${apiBaseUrl}/graph/${encodeURIComponent(selectedGraph.name)}`, {
+        const res = await fetch(`/api/graphs/${encodeURIComponent(selectedGraph.name)}`, {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         });
         if (!res.ok) throw new Error('Failed to fetch graph data');
