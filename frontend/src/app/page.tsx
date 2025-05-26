@@ -1,5 +1,6 @@
-import { LoginPage } from "@/components/auth/LoginPage";
+import { redirect } from 'next/navigation'
 
 export default function Home() {
-  return <LoginPage />;
+  // Redirect to custom sign-in page
+  redirect('/auth/signin')
 }

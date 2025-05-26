@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useSession } from "next-auth/react"
 import {
   IconCamera,
   IconChartBar,
@@ -39,12 +40,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
+const staticData = {
   navMain: [
     {
       title: "Home",
@@ -114,6 +110,26 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { data: session } = useSession()
+
+  // Create user data from session or fallback
+  const userData = React.useMemo(() => {
+    if (session?.user) {
+      return {
+        name: session.user.name || "User",
+        email: session.user.email || "user@example.com",
+        avatar: session.user.image || "/avatars/default.jpg",
+      }
+    }
+    
+    // Fallback for when session is not available
+    return {
+      name: "Loading...",
+      email: "loading@example.com",
+      avatar: "/avatars/default.jpg",
+    }
+  }, [session])
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -125,19 +141,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             >
               <a href="#">
                 <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Acme Inc.</span>
+                <span className="text-base font-semibold">MOONGRAPH</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={data.navMain} />
-        <NavDocuments items={data.documents} />
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
+        <NavMain items={staticData.navMain} />
+        <NavDocuments items={staticData.documents} />
+        <NavSecondary items={staticData.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={userData} />
       </SidebarFooter>
     </Sidebar>
   )

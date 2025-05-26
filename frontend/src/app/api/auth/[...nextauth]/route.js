@@ -10,6 +10,8 @@ export const authOptions = {
       authorization: {
         params: {
           audience: process.env.AUTH0_API_IDENTIFIER, // The API Identifier for Morphik Core
+          scope: 'openid email profile',
+          prompt: 'login', // Force login screen to show user selection
         },
       },
     }),
@@ -17,6 +19,10 @@ export const authOptions = {
   ],
   session: {
     strategy: 'jwt', // Use JWT for session strategy
+  },
+  pages: {
+    signIn: '/auth/signin', // Custom sign-in page
+    error: '/auth/error', // Error page
   },
   callbacks: {
     async jwt({ token, user, account }) {

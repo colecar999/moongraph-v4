@@ -63,9 +63,14 @@ export interface Folder {
   id: string;
   name: string;
   description?: string;
-  owner: string;
+  owner: string; // Legacy field - keeping for backward compatibility
+  owner_type?: string; // New RBAC field: 'user' or 'team'
+  owner_user_id?: string; // New RBAC field: ID of user owner
+  owner_team_id?: string; // New RBAC field: ID of team owner
+  visibility?: string; // New RBAC field: 'private', 'team_shared', 'public_readable'
   document_ids?: string[]; // Optional - deprecated in favor of document_count
   document_count?: number; // New field for document count
+  graph_count?: number; // New field for graph count (for unified view)
   system_metadata: Record<string, unknown>;
   access_control?: Record<string, unknown>;
   created_at?: string;

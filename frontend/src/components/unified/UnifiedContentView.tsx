@@ -47,18 +47,15 @@ import {
   IconFilter
 } from '@tabler/icons-react';
 import { flexRender } from '@tanstack/react-table';
+import { Folder } from '@/components/types';
+import { DeleteConfirmationDialog } from '@/components/ui/delete-confirmation-dialog';
 
 interface UnifiedContentViewProps {
   folderId?: string | null;
   onItemClick?: (item: UnifiedContentItem) => void;
   onBack?: () => void;
   title?: string;
-  folders?: Array<{
-    id: string;
-    name: string;
-    document_count: number;
-    graph_count?: number;
-  }>;
+  folders?: Folder[];
   onBulkMoveToFolder?: (itemIds: string[], folderId: string) => Promise<void>;
   onBulkDeleteItems?: (itemIds: string[]) => Promise<void>;
 }
@@ -74,6 +71,8 @@ export function UnifiedContentView({
 }: UnifiedContentViewProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [contentTypeFilter, setContentTypeFilter] = useState<'all' | 'document' | 'graph'>('all');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const { content, loading, error, stats } = useUnifiedContent({ folderId });
 
@@ -110,18 +109,21 @@ export function UnifiedContentView({
   const handleBulkDeleteItems = useCallback(async () => {
     if (!onBulkDeleteItems || selectedIds.length === 0) return;
     
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`
-    );
-    if (!confirmed) return;
-
+    setIsDeleting(true);
     try {
       await onBulkDeleteItems(selectedIds);
       setSelectedIds([]);
     } catch (error) {
       console.error("Error deleting items:", error);
+    } finally {
+      setIsDeleting(false);
     }
   }, [onBulkDeleteItems, selectedIds]);
+
+  const handleDeleteClick = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    setDeleteDialogOpen(true);
+  }, [selectedIds]);
 
   const handleBack = useCallback(() => {
     onBack?.();
@@ -233,6 +235,16 @@ export function UnifiedContentView({
                 </>
               )}
               
+              {/* Info about graph limitations */}
+              {hasSelection && (
+                <>
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    Note: Only documents can be moved to folders. Graphs will be skipped.
+                  </div>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              
               {/* Move to folder options */}
               {folders && folders.length > 0 ? (
                 folders
@@ -245,6 +257,11 @@ export function UnifiedContentView({
                     >
                       <IconFolder className="h-4 w-4 mr-2" />
                       {folder.name}
+                      {folder.document_count !== undefined && (
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {folder.document_count}
+                        </span>
+                      )}
                     </DropdownMenuItem>
                   ))
               ) : (
@@ -259,7 +276,7 @@ export function UnifiedContentView({
           <Button
             variant="outline"
             size="sm"
-            onClick={handleBulkDeleteItems}
+            onClick={handleDeleteClick}
             disabled={loading || !hasSelection}
             className="flex items-center gap-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
           >
@@ -462,6 +479,16 @@ export function UnifiedContentView({
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleBulkDeleteItems}
+        itemCount={selectedIds.length}
+        itemType="item"
+        isLoading={isDeleting}
+      />
     </div>
   );
 } 

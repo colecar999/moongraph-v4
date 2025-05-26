@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import { Document } from '@/components/types';
 
 export interface UnifiedContentItem {
@@ -39,6 +40,7 @@ interface UseUnifiedContentOptions {
 
 export function useUnifiedContent(options: UseUnifiedContentOptions = {}) {
   const { folderId = null, limit = 50, skip = 0 } = options;
+  const { data: session } = useSession();
   
   const [content, setContent] = useState<UnifiedContentItem[]>([]);
   const [stats, setStats] = useState<UnifiedStats | null>(null);
@@ -49,6 +51,12 @@ export function useUnifiedContent(options: UseUnifiedContentOptions = {}) {
     try {
       setLoading(true);
       setError(null);
+
+      // Get auth token from session
+      const authToken = session?.accessToken as string | null;
+      if (!authToken) {
+        throw new Error('No authentication token available');
+      }
 
       const params = new URLSearchParams({
         limit: limit.toString(),
@@ -61,7 +69,7 @@ export function useUnifiedContent(options: UseUnifiedContentOptions = {}) {
 
       const response = await fetch(`/api/unified/content?${params}`, {
         headers: {
-          'Authorization': `Bearer ${process.env.NODE_ENV === 'development' ? 'devtoken' : 'actual-token'}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
       });
@@ -77,13 +85,19 @@ export function useUnifiedContent(options: UseUnifiedContentOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [folderId, limit, skip]);
+  }, [folderId, limit, skip, session?.accessToken]);
 
   const fetchStats = useCallback(async () => {
     try {
+      // Get auth token from session
+      const authToken = session?.accessToken as string | null;
+      if (!authToken) {
+        return; // Skip stats if no token
+      }
+
       const response = await fetch('/api/unified/stats', {
         headers: {
-          'Authorization': `Bearer ${process.env.NODE_ENV === 'development' ? 'devtoken' : 'actual-token'}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
       });
@@ -97,20 +111,26 @@ export function useUnifiedContent(options: UseUnifiedContentOptions = {}) {
     } catch (err) {
       console.error('Failed to fetch unified stats:', err);
     }
-  }, []);
+  }, [session?.accessToken]);
 
   useEffect(() => {
-    fetchContent();
-  }, [fetchContent]);
+    if (session?.accessToken) {
+      fetchContent();
+    }
+  }, [fetchContent, session?.accessToken]);
 
   useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+    if (session?.accessToken) {
+      fetchStats();
+    }
+  }, [fetchStats, session?.accessToken]);
 
   const refresh = useCallback(() => {
-    fetchContent();
-    fetchStats();
-  }, [fetchContent, fetchStats]);
+    if (session?.accessToken) {
+      fetchContent();
+      fetchStats();
+    }
+  }, [fetchContent, fetchStats, session?.accessToken]);
 
   return {
     content,

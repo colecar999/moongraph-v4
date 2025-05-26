@@ -45,16 +45,16 @@ export const ConnectionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     [connectionUri]
   );
 
-  // Get auth token from NextAuth session instead of connection URI
+  // Get auth token from NextAuth session only (no fallback to URI)
   const authToken = useMemo(() => {
-    // If we have a NextAuth session with accessToken, use that
+    // Only use NextAuth session access token
     if (session && (session as ExtendedSession).accessToken) {
       return (session as ExtendedSession).accessToken as string;
     }
     
-    // Fallback to extracting from URI (for backward compatibility)
-    return extractTokenFromUri(connectionUri);
-  }, [session, connectionUri]);
+    // No fallback - if there's no Auth0 token, return null
+    return null;
+  }, [session]);
 
   const isAuthenticated = status === 'authenticated' && !!authToken;
   const isLoading = status === 'loading';
