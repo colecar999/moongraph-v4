@@ -29,22 +29,16 @@ ENV UV_CACHE_DIR=/root/.cache/uv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:${PATH}"
 
-# Copy project definition and lock file from morphik-core
-COPY morphik-core/pyproject.toml morphik-core/uv.lock ./
+# Copy requirements file from morphik-core
+COPY morphik-core/requirements.txt ./
 
-# Create venv and install dependencies from lockfile (excluding the project itself initially for better caching)
-# This also creates the /app/.venv directory
-# Cache buster: 1 - verbose flag added
+# Create venv and install dependencies from requirements.txt
 RUN --mount=type=cache,target=${UV_CACHE_DIR} \
-    uv sync --verbose --no-install-project
+    uv venv && \
+    uv pip install -r requirements.txt
 
 # Copy the rest of the application code from morphik-core
 COPY morphik-core/ ./
-
-# Install the project itself into the venv in non-editable mode
-# Cache buster: 1 - verbose flag added
-RUN --mount=type=cache,target=${UV_CACHE_DIR} \
-    uv sync --verbose --no-editable
 
 # Install additional packages as requested
 # Cache buster: 1 - verbose flag added
@@ -186,19 +180,18 @@ if [ $# -gt 0 ]; then\n\
     # If arguments exist, execute them (e.g., execute "arq core.workers...")\n\
     exec "$@"\n\
 else\n\
-    # Otherwise, execute the default command (uv run start_server.py)\n\
-    exec uv run uvicorn core.api:app --host $HOST --port $PORT --loop asyncio --http auto --ws auto --lifespan auto\n\
+    # Otherwise, execute the default command (start FastAPI server)\n\
+    exec python -m uvicorn core.api:app --host $HOST --port $PORT --loop asyncio --http auto --ws auto --lifespan auto\n\
 fi\n\
 ' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 # Copy application code from morphik-core (already copied above)
-# pyproject.toml is needed for uv to identify the project context for `uv run`
 # Files are already copied in the COPY morphik-core/ ./ step above
 
 # Labels for the image
 LABEL org.opencontainers.image.title="Morphik Core"
 LABEL org.opencontainers.image.description="Morphik Core - A powerful document processing and retrieval system"
-LABEL org.opencontainers.image.source="https://github.com/yourusername/morphik"
+LABEL org.opencontainers.image.source="https://github.com/colecar999/moongraph-v4"
 LABEL org.opencontainers.image.version="1.0.0"
 LABEL org.opencontainers.image.licenses="MIT"
 
