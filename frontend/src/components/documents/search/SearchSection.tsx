@@ -53,7 +53,8 @@ const SearchSection: React.FC<SearchSectionProps> = ({ apiBaseUrl, authToken, on
           setFolders(folderData);
         }
       } catch (error) {
-        // Ignore
+        console.error('Failed to fetch folders:', error);
+        // Ignore folder fetch errors
       }
     };
     if (authToken || apiBaseUrl.includes("localhost")) {
