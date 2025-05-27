@@ -84,7 +84,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { graph
     const { graphId } = params;
     const authHeader = request.headers.get('authorization') || 'Bearer devtoken';
 
-    const response = await fetch(`${BACKEND_URL}/graph/${graphId}`, {
+    const response = await fetch(`${BACKEND_URL}/graphs/${graphId}`, {
       method: 'DELETE',
       headers: {
         'Authorization': authHeader,

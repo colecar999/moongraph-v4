@@ -1,11 +1,23 @@
 "use client"
 
+import { useState } from "react"
 import { useSession } from "next-auth/react"
 import { UnifiedContentView } from "@/components/unified/UnifiedContentView"
 import { useFolders } from "@/hooks/use-folders"
+import { ErrorDialog } from "@/components/ui/error-dialog"
 
 export default function AllUnifiedContentPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const [errorDialog, setErrorDialog] = useState<{
+    open: boolean
+    title: string
+    description?: string
+    errors: string[]
+  }>({
+    open: false,
+    title: "",
+    errors: []
+  })
   
   // Get API configuration
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
@@ -14,11 +26,12 @@ export default function AllUnifiedContentPage() {
   // Fetch folders data
   const { folders } = useFolders({ 
     apiBaseUrl, 
-    authToken 
+    authToken,
+    sessionStatus: status
   })
 
   return (
-    <div className="container mx-auto p-6">
+    <>
       <UnifiedContentView
         folderId={null} // null means fetch all content
         title="All Content"
@@ -65,8 +78,12 @@ export default function AllUnifiedContentPage() {
             }
             
             if (errors.length > 0) {
-              // Show the first few errors as an alert
-              alert(`Move operation completed with errors:\n${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n... and ${errors.length - 3} more errors` : ''}`);
+              setErrorDialog({
+                open: true,
+                title: "Move Operation Completed with Errors",
+                description: `${successes.length} items moved successfully, ${errors.length} failed.`,
+                errors
+              });
             }
 
             // Refresh the page to show updated content if any items were moved successfully
@@ -75,10 +92,15 @@ export default function AllUnifiedContentPage() {
             }
           } catch (error) {
             console.error('Error moving items:', error);
-            alert(`Move operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            setErrorDialog({
+              open: true,
+              title: "Move Operation Failed",
+              description: "An unexpected error occurred while moving items.",
+              errors: [error instanceof Error ? error.message : 'Unknown error']
+            });
           }
         }}
-        onBulkDeleteItems={async (itemIds: string[]) => {
+        onBulkDeleteItems={async (itemIds: string[], contentItems?: any[], refreshContent?: () => void) => {
           // Handle bulk delete operations for both documents and graphs
           try {
             const errors: string[] = [];
@@ -86,46 +108,77 @@ export default function AllUnifiedContentPage() {
             
             for (const itemId of itemIds) {
               try {
-                // First, try to determine if this is a document or graph
-                // We'll try deleting as document first, then handle the error
-                const response = await fetch(`/api/documents/${itemId}`, {
-                  method: 'DELETE',
-                  headers: {
-                    'Authorization': `Bearer ${authToken || 'devtoken'}`,
-                  },
-                });
+                // Find the content item to determine its type
+                const contentItem = contentItems?.find(item => item.id === itemId || item.external_id === itemId);
+                const contentType = contentItem?.content_type;
+                
+                let response: Response;
+                
+                if (contentType === 'graph') {
+                  // Delete as graph
+                  response = await fetch(`/api/graphs/${itemId}`, {
+                    method: 'DELETE',
+                    headers: {
+                      'Authorization': `Bearer ${authToken || 'devtoken'}`,
+                    },
+                  });
+                } else {
+                  // Delete as document (default for unknown types)
+                  response = await fetch(`/api/documents/${itemId}`, {
+                    method: 'DELETE',
+                    headers: {
+                      'Authorization': `Bearer ${authToken || 'devtoken'}`,
+                    },
+                  });
+                }
 
                 if (response.ok) {
                   successes.push(itemId);
-                } else if (response.status === 404) {
-                  // Item not found as document, might be a graph
-                  // Since graphs don't support deletion, we'll show an error
-                  errors.push(`Item ${itemId} appears to be a graph. Graph deletion is not currently supported.`);
                 } else {
                   const errorText = await response.text();
-                  errors.push(`Failed to delete item ${itemId}: ${errorText}`);
+                  const itemType = contentType || 'item';
+                  errors.push(`Failed to delete ${itemType} ${itemId}: ${errorText}`);
                 }
               } catch (error) {
                 errors.push(`Failed to delete item ${itemId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
               }
             }
 
-            // Show results
-            if (successes.length > 0) {
-              console.log(`Successfully deleted ${successes.length} items`);
+            // Refresh content if any items were successfully deleted
+            if (successes.length > 0 && refreshContent) {
+              refreshContent();
+              console.log(`Successfully deleted ${successes.length} items - content refreshed`);
             }
             
             if (errors.length > 0) {
-              // Show the first error as an alert for now
-              alert(`Delete operation completed with errors:\n${errors.slice(0, 3).join('\n')}${errors.length > 3 ? `\n... and ${errors.length - 3} more errors` : ''}`);
+              setErrorDialog({
+                open: true,
+                title: "Delete Operation Completed with Errors",
+                description: `${successes.length} items deleted successfully, ${errors.length} failed.`,
+                errors
+              });
             }
             
           } catch (error) {
             console.error('Bulk delete failed:', error);
-            alert(`Delete operation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            setErrorDialog({
+              open: true,
+              title: "Delete Operation Failed",
+              description: "An unexpected error occurred while deleting items.",
+              errors: [error instanceof Error ? error.message : 'Unknown error']
+            });
           }
         }}
       />
-    </div>
+
+      <ErrorDialog
+        open={errorDialog.open}
+        onOpenChange={(open) => setErrorDialog(prev => ({ ...prev, open }))}
+        title={errorDialog.title}
+        description={errorDialog.description}
+        errors={errorDialog.errors}
+        onClose={() => setErrorDialog({ open: false, title: "", errors: [] })}
+      />
+    </>
   )
 } 

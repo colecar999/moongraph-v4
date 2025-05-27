@@ -6,6 +6,7 @@ import { Folder } from "@/components/types"
 interface UseFoldersProps {
   apiBaseUrl: string
   authToken: string | null
+  sessionStatus?: "loading" | "authenticated" | "unauthenticated"
 }
 
 interface UseFoldersReturn {
@@ -23,7 +24,7 @@ interface FoldersStatsResponse {
   documents_in_folders: number
 }
 
-export function useFolders({ apiBaseUrl, authToken }: UseFoldersProps): UseFoldersReturn {
+export function useFolders({ apiBaseUrl, authToken, sessionStatus }: UseFoldersProps): UseFoldersReturn {
   const [folders, setFolders] = useState<Folder[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,20 +32,34 @@ export function useFolders({ apiBaseUrl, authToken }: UseFoldersProps): UseFolde
 
   // Fetch folders and document statistics in a single API call
   const fetchFoldersWithStats = useCallback(async () => {
-    if (!apiBaseUrl || !authToken) return
+    if (!apiBaseUrl) return
+
+    // Use dev token in development if no real token is available
+    const effectiveToken = authToken || (process.env.NODE_ENV === "development" ? "devtoken" : null)
+    
+    if (!effectiveToken) {
+      console.log("useFolders: No auth token available and not in dev mode, skipping fetch")
+      return
+    }
 
     try {
       console.log("useFolders: Fetching folders with stats from", `/api/folders/stats`)
+      console.log("useFolders: Using auth token:", effectiveToken ? `${effectiveToken.substring(0, 20)}...` : "null")
       
       const response = await fetch(`/api/folders/stats`, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${authToken}`,
+          Authorization: `Bearer ${effectiveToken}`,
         },
       })
 
+      console.log("useFolders: Response status:", response.status)
+      console.log("useFolders: Response headers:", Object.fromEntries(response.headers.entries()))
+
       if (!response.ok) {
-        throw new Error(`Failed to fetch folders with stats: ${response.statusText}`)
+        const errorText = await response.text()
+        console.error("useFolders: Error response body:", errorText)
+        throw new Error(`Failed to fetch folders with stats: ${response.status} ${response.statusText} - ${errorText}`)
       }
 
       const data: FoldersStatsResponse = await response.json()
@@ -68,9 +83,17 @@ export function useFolders({ apiBaseUrl, authToken }: UseFoldersProps): UseFolde
       return
     }
 
-    // Don't fetch if we don't have an auth token yet
-    if (!authToken) {
-      console.log("useFolders: No auth token available, skipping fetch")
+    // Wait for session to finish loading before making API calls
+    if (sessionStatus === "loading") {
+      console.log("useFolders: Session still loading, waiting...")
+      return
+    }
+
+    // Use dev token in development if no real token is available
+    const effectiveToken = authToken || (process.env.NODE_ENV === "development" ? "devtoken" : null)
+    
+    if (!effectiveToken) {
+      console.log("useFolders: No auth token available and not in dev mode, skipping fetch")
       return
     }
 
@@ -92,11 +115,16 @@ export function useFolders({ apiBaseUrl, authToken }: UseFoldersProps): UseFolde
     }
 
     fetchData()
-  }, [authToken, apiBaseUrl, fetchFoldersWithStats])
+  }, [authToken, apiBaseUrl, sessionStatus, fetchFoldersWithStats])
 
   // Refetch function for manual refresh
   const refetch = useCallback(async () => {
-    if (!apiBaseUrl || !authToken) return
+    if (!apiBaseUrl) return
+
+    // Use dev token in development if no real token is available
+    const effectiveToken = authToken || (process.env.NODE_ENV === "development" ? "devtoken" : null)
+    
+    if (!effectiveToken) return
 
     setLoading(true)
     setError(null)

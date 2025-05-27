@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { 
@@ -15,7 +15,12 @@ import {
   IconFolder,
   IconSearch,
   IconTrash,
-  IconDots
+  IconDots,
+  IconLock,
+  IconUsers,
+  IconGlobe,
+  IconX,
+  IconUpload
 } from "@tabler/icons-react"
 import {
   ColumnDef,
@@ -62,6 +67,23 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { useFolders } from "@/hooks/use-folders"
 import { Folder } from "@/components/types"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog"
+import { cn } from "@/lib/utils"
+
+// Import upload functionality
+import UnifiedUploadDialog from "@/components/unified/UnifiedUploadDialog"
+import { useUnifiedUpload } from "@/hooks/useUnifiedUpload"
+import { useUnifiedDragAndDrop } from "@/hooks/useUnifiedDragAndDrop"
 
 // Define the data structure for our table
 interface UnifiedFolderRowData {
@@ -102,10 +124,10 @@ function foldersToTableData(folders: Folder[], totalDocuments: number, totalGrap
     switch (visibility) {
       case "private":
         return "Private"
-      case "team_shared":
-        return "Shared"  // Simplified: invited collaborators
-      case "public_readable":
-        return "Public"  // Simplified: discoverable + collaborators
+      case "shared":
+        return "Shared"  // Backend stores "shared", not "team_shared"
+      case "public":
+        return "Public"  // Backend stores "public", not "public_readable"
       default:
         return "Private"
     }
@@ -266,18 +288,59 @@ export default function UnifiedPage() {
     pageSize: 10,
   })
   
+  // Collection creation modal state
+  const [createCollectionOpen, setCreateCollectionOpen] = useState(false)
+  const [collectionForm, setCollectionForm] = useState({
+    name: "",
+    description: "",
+    privacy: "private" as "private" | "shared" | "public"
+  })
+  const [isCreating, setIsCreating] = useState(false)
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   // Get API configuration
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
   const authToken = session?.accessToken as string | null
 
+  // Don't fetch data if we don't have a proper token and we're not in dev mode
+  const shouldSkipFetch = !authToken && process.env.NODE_ENV !== "development"
+
   // Fetch folders data
-  const { folders, loading, error, totalDocuments } = useFolders({ 
+  const { folders, loading, error, totalDocuments, refetch } = useFolders({ 
     apiBaseUrl, 
-    authToken 
+    authToken,
+    sessionStatus: status
   })
 
   // TODO: Fetch total graphs count when available
   const totalGraphs = 0
+
+  // Upload functionality
+  const {
+    uploadDialogOpen,
+    setUploadDialogOpen,
+    uploadLoading,
+    handleFileUpload,
+    handleBatchFileUpload,
+    handleTextUpload,
+  } = useUnifiedUpload({
+    onUploadComplete: () => {
+      // Refresh folders data after upload
+      refetch?.()
+    }
+  })
+
+  // Drag and drop functionality
+  const { isDragging, dragHandlers } = useUnifiedDragAndDrop({
+    onDrop: (files: File[]) => {
+      // Handle drag and drop upload - upload to unfiled by default
+      handleBatchFileUpload(files, null)
+    },
+    disabled: uploadLoading
+  })
 
   // MEMOIZED: Convert folders to table data to prevent recreation on every render
   const tableData = useMemo(() => {
@@ -324,42 +387,126 @@ export default function UnifiedPage() {
     }
   }, [router])
 
-  // Handle bulk folder deletion
-  const handleBulkDeleteFolders = async () => {
-    const selectedFolderIds = Object.keys(rowSelection).filter(id => id !== "all-content")
+  // Handle bulk collection deletion
+  const handleBulkDeleteCollections = async () => {
+    const selectedCollectionIds = Object.keys(rowSelection).filter(id => id !== "all-content")
     
-    if (selectedFolderIds.length === 0) return
+    if (selectedCollectionIds.length === 0) return
     
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${selectedFolderIds.length} folder${selectedFolderIds.length !== 1 ? 's' : ''}? This will also remove all documents from these folders.`
-    )
-    if (!confirmed) return
+    // Open the styled confirmation dialog
+    setDeleteDialogOpen(true)
+  }
 
+  // Handle the actual deletion after confirmation
+  const handleConfirmDelete = async () => {
+    const selectedCollectionIds = Object.keys(rowSelection).filter(id => id !== "all-content")
+    
+    if (selectedCollectionIds.length === 0) return
+    
+    // Use dev token in development if no real token is available
+    const effectiveToken = authToken || (process.env.NODE_ENV === "development" ? "devtoken" : null)
+    
+    if (!effectiveToken) {
+      alert("Authentication required")
+      return
+    }
+
+    setIsDeleting(true)
     try {
-      // Delete each folder
-      for (const folderId of selectedFolderIds) {
-        const response = await fetch(`/api/folders/${folderId}`, {
+      // Delete each collection (keeping files by default for bulk operations)
+      const deletePromises = selectedCollectionIds.map(async (collectionId) => {
+        const response = await fetch(`/api/folders/${collectionId}`, {
           method: 'DELETE',
           headers: {
-            'Authorization': `Bearer ${authToken || 'devtoken'}`,
+            'Authorization': `Bearer ${effectiveToken}`,
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({
+            deleteFiles: false // Always keep files for bulk operations for safety
+          }),
         })
 
         if (!response.ok) {
-          throw new Error(`Failed to delete folder ${folderId}`)
+          const errorText = await response.text()
+          throw new Error(`Failed to delete collection ${collectionId}: ${response.status} ${errorText}`)
         }
-      }
+        
+        return response.json()
+      })
 
-      // Refresh the page
+      await Promise.all(deletePromises)
+
+      // Clear selection and refresh
+      setRowSelection({})
+      setDeleteDialogOpen(false)
       window.location.reload()
     } catch (error) {
-      console.error('Error deleting folders:', error)
-      alert('Failed to delete some folders. Please try again.')
+      console.error('Error deleting collections:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      alert(`Failed to delete some collections: ${errorMessage}`)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
+  // Handle clear selection
+  const handleClearSelection = () => {
+    setRowSelection({})
+  }
+
+  // Handle collection creation
+  const handleCreateCollection = async () => {
+    if (!collectionForm.name.trim()) return
+
+    // Use dev token in development if no real token is available
+    const effectiveToken = authToken || (process.env.NODE_ENV === "development" ? "devtoken" : null)
+    
+    if (!effectiveToken) {
+      alert("Authentication required")
+      return
+    }
+
+    setIsCreating(true)
+    try {
+      const response = await fetch('/api/folders', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${effectiveToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: collectionForm.name.trim(),
+          description: collectionForm.description.trim() || null,
+          visibility: collectionForm.privacy,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to create collection')
+      }
+
+      // Reset form and close modal
+      setCollectionForm({ name: "", description: "", privacy: "private" })
+      setCreateCollectionOpen(false)
+      
+      // Refresh the page to show new collection
+      window.location.reload()
+    } catch (error) {
+      console.error('Error creating collection:', error)
+      alert('Failed to create collection. Please try again.')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  // Reset form when modal closes
+  const handleModalClose = () => {
+    setCreateCollectionOpen(false)
+    setCollectionForm({ name: "", description: "", privacy: "private" })
+  }
+
   // Show loading while session is loading
-  if (status === "loading") {
+  if (status === "loading" && process.env.NODE_ENV !== "development") {
     return (
       <div className="flex flex-col gap-4 px-4 lg:px-6">
         <div className="text-center py-8">Loading...</div>
@@ -370,7 +517,7 @@ export default function UnifiedPage() {
   if (error) {
     return (
       <div className="flex flex-col gap-4 px-4 lg:px-6">
-        <div className="text-red-600">Error loading folders: {error}</div>
+        <div className="text-red-600">Error loading collections: {error}</div>
       </div>
     )
   }
@@ -378,40 +525,123 @@ export default function UnifiedPage() {
   const hasSelection = Object.keys(rowSelection).length > 0
 
   return (
-    <div className="w-full flex-col justify-start gap-6">
-      {/* Header with controls - matches documents pattern */}
+    <div 
+      className={cn(
+        "w-full flex-col justify-start gap-6 relative",
+        isDragging && "drag-active"
+      )}
+      {...dragHandlers}
+    >
+      {/* Drag overlay - only visible when dragging files */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm">
+          <div className="rounded-lg bg-background p-8 text-center shadow-lg">
+            <IconUpload className="mx-auto mb-4 h-12 w-12 text-primary" />
+            <h3 className="mb-2 text-xl font-medium">Drop to Upload</h3>
+            <p className="text-muted-foreground">
+              Files will be uploaded as unfiled content
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Header with controls - matches documents pattern exactly */}
       <div className="flex items-center justify-between px-4 lg:px-6 py-6">
-        <div className="flex flex-col gap-4 flex-1">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <IconFolder className="h-5 w-5" />
-              <h1 className="text-2xl font-bold tracking-tight">Research Collections</h1>
-            </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <IconFolder className="h-5 w-5" />
+            <h1 className="text-2xl font-bold tracking-tight">Research Collections</h1>
           </div>
           
-          {/* Search toolbar - no bulk actions at folder level */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <IconSearch className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search collections..."
-                value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-                onChange={(event) =>
-                  table.getColumn("name")?.setFilterValue(event.target.value)
-                }
-                className="max-w-sm"
-              />
-            </div>
+          <div className="flex items-center gap-2 ml-4">
+            <IconSearch className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search collections..."
+              value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+              onChange={(event) =>
+                table.getColumn("name")?.setFilterValue(event.target.value)
+              }
+              className="max-w-sm"
+            />
           </div>
         </div>
         
         <div className="flex items-center gap-2">
+          {/* Bulk Action Buttons - always visible, disabled when no selection */}
+          {/* Delete button - icon only */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBulkDeleteCollections}
+            disabled={loading || !hasSelection}
+            className="flex items-center gap-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+          >
+            <IconTrash className="h-4 w-4" />
+          </Button>
+
+          {/* Upload button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setUploadDialogOpen(true)}
+            disabled={uploadLoading}
+            className="flex items-center gap-2"
+          >
+            <IconUpload className="h-4 w-4" />
+            <span className="hidden lg:inline">Upload</span>
+          </Button>
+          
+          {/* Collections dropdown - consolidated on far right */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <IconFolder className="h-4 w-4" />
+                <span className="hidden lg:inline">Collections</span>
+                <IconChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              {/* New Collection */}
+              <DropdownMenuItem onClick={() => setCreateCollectionOpen(true)}>
+                <IconPlus className="h-4 w-4 mr-2" />
+                New Collection
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              
+              {/* Selection actions - only show when items are selected */}
+              {hasSelection && (
+                <>
+                  <DropdownMenuItem 
+                    onClick={handleClearSelection}
+                    disabled={loading}
+                  >
+                    <IconX className="h-4 w-4 mr-2" />
+                    Clear Selection
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              
+              {/* Future actions */}
+              <DropdownMenuItem disabled>
+                Create Graph (Coming Soon)
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                Share (Coming Soon)
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                Export (Coming Soon)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Columns */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
                 <IconLayoutColumns className="h-4 w-4" />
-                <span className="hidden lg:inline">Customize Columns</span>
-                <span className="lg:hidden">Columns</span>
+                <span className="hidden lg:inline">Columns</span>
                 <IconChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -439,10 +669,6 @@ export default function UnifiedPage() {
                 })}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="outline" size="sm">
-            <IconPlus className="h-4 w-4" />
-            <span className="hidden lg:inline">New Collection</span>
-          </Button>
         </div>
       </div>
 
@@ -472,7 +698,7 @@ export default function UnifiedPage() {
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
-                    Loading folders...
+                    Loading collections...
                   </TableCell>
                 </TableRow>
               ) : table.getRowModel().rows?.length ? (
@@ -493,7 +719,20 @@ export default function UnifiedPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No folders found.
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <IconUpload className="mx-auto mb-2 h-12 w-12 text-muted-foreground" />
+                      <p className="text-muted-foreground">No collections found.</p>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Drag and drop files here or use the upload button to get started.
+                      </p>
+                      <Button 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={() => setUploadDialogOpen(true)}
+                      >
+                        Upload Files
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
@@ -580,6 +819,127 @@ export default function UnifiedPage() {
           </div>
         </div>
       </div>
+
+      {/* Upload Dialog */}
+      <UnifiedUploadDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        currentFolderId={null}
+        folders={folders}
+        onUploadComplete={() => {
+          // Additional completion handling if needed
+        }}
+        loading={uploadLoading}
+        onFileUpload={handleFileUpload}
+        onBatchFileUpload={handleBatchFileUpload}
+        onTextUpload={handleTextUpload}
+      />
+
+      {/* Collection Creation Modal */}
+      <Dialog open={createCollectionOpen} onOpenChange={handleModalClose}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create New Collection</DialogTitle>
+            <DialogDescription>
+              Organize your documents and graphs into a collection with privacy controls.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="collection-name">Collection Name *</Label>
+              <Input
+                id="collection-name"
+                placeholder="Enter collection name..."
+                value={collectionForm.name}
+                onChange={(e) => setCollectionForm(prev => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="collection-description">Description</Label>
+              <Textarea
+                id="collection-description"
+                placeholder="Optional description..."
+                value={collectionForm.description}
+                onChange={(e) => setCollectionForm(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+              />
+            </div>
+            
+            <div className="grid gap-3">
+              <Label>Privacy Level</Label>
+              <RadioGroup
+                value={collectionForm.privacy}
+                onValueChange={(value: string) => setCollectionForm(prev => ({ ...prev, privacy: value as "private" | "shared" | "public" }))}
+              >
+                <div className="flex items-start space-x-3 space-y-0">
+                  <RadioGroupItem value="private" id="privacy-private" />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="privacy-private" className="flex items-center gap-2 font-medium">
+                      <IconLock className="h-4 w-4" />
+                      Private
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Only you can access this collection
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-3 space-y-0">
+                  <RadioGroupItem value="shared" id="privacy-shared" />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="privacy-shared" className="flex items-center gap-2 font-medium">
+                      <IconUsers className="h-4 w-4" />
+                      Shared
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Invite collaborators to access this collection
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-3 space-y-0">
+                  <RadioGroupItem value="public" id="privacy-public" />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="privacy-public" className="flex items-center gap-2 font-medium">
+                      <IconGlobe className="h-4 w-4" />
+                      Public
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Discoverable by anyone, invite collaborators
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={handleModalClose} disabled={isCreating}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateCollection} 
+              disabled={!collectionForm.name.trim() || isCreating}
+            >
+              {isCreating ? "Creating..." : "Create Collection"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onConfirm={handleConfirmDelete}
+        itemCount={Object.keys(rowSelection).filter(id => id !== "all-content").length}
+        itemType="collection"
+        isLoading={isDeleting}
+        title="Delete Collections?"
+        description={`Are you sure you want to delete ${Object.keys(rowSelection).filter(id => id !== "all-content").length} collection${Object.keys(rowSelection).filter(id => id !== "all-content").length !== 1 ? 's' : ''}? This will remove the collections but keep all files (documents will become unfiled).`}
+      />
     </div>
   )
 } 

@@ -2,20 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { folderId: string } }
+) {
   try {
-    const { searchParams } = new URL(request.url);
-    
-    // Forward all query parameters to the backend
-    const backendUrl = new URL('/folders', BACKEND_URL);
-    searchParams.forEach((value, key) => {
-      backendUrl.searchParams.append(key, value);
-    });
-
-    // Get authorization header from the request
+    const { folderId } = params;
     const authHeader = request.headers.get('authorization') || 'Bearer devtoken';
 
-    const response = await fetch(backendUrl.toString(), {
+    const response = await fetch(`${BACKEND_URL}/folders/${folderId}`, {
       method: 'GET',
       headers: {
         'Authorization': authHeader,
@@ -43,18 +38,32 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { folderId: string } }
+) {
   try {
-    const body = await request.json();
+    const { folderId } = params;
     const authHeader = request.headers.get('authorization') || 'Bearer devtoken';
 
-    const response = await fetch(`${BACKEND_URL}/folders`, {
-      method: 'POST',
+    // Get request body if present
+    let body = null;
+    try {
+      const requestBody = await request.text();
+      if (requestBody) {
+        body = requestBody;
+      }
+    } catch (e) {
+      // No body, continue without body
+    }
+
+    const response = await fetch(`${BACKEND_URL}/folders/${folderId}`, {
+      method: 'DELETE',
       headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      ...(body && { body }),
     });
 
     if (!response.ok) {

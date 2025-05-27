@@ -49,6 +49,7 @@ export function DocumentsView({
   const { folders, loading: foldersLoading } = useFolders({
     apiBaseUrl,
     authToken,
+    sessionStatus: status,
   })
 
   // Find current folder info if viewing a specific folder

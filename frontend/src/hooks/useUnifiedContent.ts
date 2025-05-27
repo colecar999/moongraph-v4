@@ -10,9 +10,13 @@ export interface UnifiedContentItem {
   updated_at: string;
   folder_id?: string;
   // Document-specific fields
+  filename?: string;
   file_name?: string;
   file_type?: string;
   file_size?: number;
+  external_id?: string; // Document ID
+  system_metadata?: Record<string, unknown>; // Added for status and other system data
+  metadata?: Record<string, unknown>; // User metadata
   // Graph-specific fields
   entities?: any[];
   relationships?: any[];

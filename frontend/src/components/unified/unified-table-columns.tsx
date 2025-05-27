@@ -22,24 +22,8 @@ import {
 import { IconFiles, IconGraph } from "@tabler/icons-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { UnifiedContentItem } from "@/hooks/useUnifiedContent"
-
-// Helper function to format dates
-function formatDate(dateString?: string): string {
-  if (!dateString) return "—"
-  try {
-    return new Date(dateString).toLocaleDateString()
-  } catch {
-    return "—"
-  }
-}
-
-// Helper function to format file sizes
-function formatFileSize(bytes?: number): string {
-  if (!bytes) return "—"
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`
-}
+import { StatusBadge, getDocumentStatus } from "@/components/ui/status-badge"
+import { formatDate, formatFileSize, getFileTypeDisplay } from "@/lib/utils/format-helpers"
 
 // Helper function to get content type badge
 function getContentTypeBadge(contentType: 'document' | 'graph') {
@@ -109,10 +93,12 @@ export const unifiedContentColumns: ColumnDef<UnifiedContentItem>[] = [
     header: "Format",
     cell: ({ row }) => {
       const item = row.original
-      if (item.content_type === 'document' && item.file_type) {
+      if (item.content_type === 'document') {
+        // Use filename or file_name to determine file type
+        const filename = item.filename || item.file_name || item.name
         return (
-          <div className="text-sm text-muted-foreground uppercase">
-            {item.file_type}
+          <div className="text-sm text-muted-foreground">
+            {getFileTypeDisplay(filename)}
           </div>
         )
       }
@@ -126,6 +112,24 @@ export const unifiedContentColumns: ColumnDef<UnifiedContentItem>[] = [
         )
       }
       return <div className="text-sm text-muted-foreground">—</div>
+    },
+  },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => {
+      const item = row.original
+      // Only show status for documents
+      if (item.content_type === 'document') {
+        const status = getDocumentStatus(item.system_metadata)
+        return <StatusBadge status={status} />
+      }
+      // For graphs, show a simple "Active" status or similar
+      return (
+        <Badge variant="outline" className="text-xs">
+          Active
+        </Badge>
+      )
     },
   },
   {

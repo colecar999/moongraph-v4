@@ -110,10 +110,24 @@ const staticData = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const [isClient, setIsClient] = React.useState(false)
+
+  React.useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   // Create user data from session or fallback
   const userData = React.useMemo(() => {
+    if (!isClient || status === "loading") {
+      // Return consistent fallback during SSR and loading
+      return {
+        name: "Loading...",
+        email: "loading@example.com",
+        avatar: "/avatars/default.jpg",
+      }
+    }
+    
     if (session?.user) {
       return {
         name: session.user.name || "User",
@@ -124,11 +138,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     
     // Fallback for when session is not available
     return {
-      name: "Loading...",
-      email: "loading@example.com",
+      name: "Guest",
+      email: "guest@example.com",
       avatar: "/avatars/default.jpg",
     }
-  }, [session])
+  }, [session, status, isClient])
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>

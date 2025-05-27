@@ -196,7 +196,8 @@ export default function DocumentsPage() {
   // Fetch folders data
   const { folders, loading, error, totalDocuments } = useFolders({ 
     apiBaseUrl, 
-    authToken 
+    authToken,
+    sessionStatus: status
   })
 
   // MEMOIZED: Convert folders to table data to prevent recreation on every render

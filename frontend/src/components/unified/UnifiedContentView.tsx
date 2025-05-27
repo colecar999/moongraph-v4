@@ -44,11 +44,18 @@ import {
   IconTrash,
   IconDots,
   IconX,
-  IconFilter
+  IconFilter,
+  IconUpload
 } from '@tabler/icons-react';
 import { flexRender } from '@tanstack/react-table';
 import { Folder } from '@/components/types';
 import { DeleteConfirmationDialog } from '@/components/ui/delete-confirmation-dialog';
+import { cn } from '@/lib/utils';
+
+// Import upload functionality
+import UnifiedUploadDialog from '@/components/unified/UnifiedUploadDialog';
+import { useUnifiedUpload } from '@/hooks/useUnifiedUpload';
+import { useUnifiedDragAndDrop } from '@/hooks/useUnifiedDragAndDrop';
 
 interface UnifiedContentViewProps {
   folderId?: string | null;
@@ -57,7 +64,7 @@ interface UnifiedContentViewProps {
   title?: string;
   folders?: Folder[];
   onBulkMoveToFolder?: (itemIds: string[], folderId: string) => Promise<void>;
-  onBulkDeleteItems?: (itemIds: string[]) => Promise<void>;
+  onBulkDeleteItems?: (itemIds: string[], contentItems?: UnifiedContentItem[], refreshContent?: () => void) => Promise<void>;
 }
 
 export function UnifiedContentView({
@@ -74,7 +81,32 @@ export function UnifiedContentView({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   
-  const { content, loading, error, stats } = useUnifiedContent({ folderId });
+  const { content, loading, error, stats, refresh } = useUnifiedContent({ folderId });
+
+  // Upload functionality - context-aware based on current folder
+  const {
+    uploadDialogOpen,
+    setUploadDialogOpen,
+    uploadLoading,
+    handleFileUpload,
+    handleBatchFileUpload,
+    handleTextUpload,
+  } = useUnifiedUpload({
+    onUploadComplete: () => {
+      // Refresh current view after upload
+      refresh();
+    },
+    defaultFolderId: folderId
+  });
+
+  // Drag and drop functionality - respects current context
+  const { isDragging, dragHandlers } = useUnifiedDragAndDrop({
+    onDrop: (files: File[]) => {
+      // Upload to current folder context
+      handleBatchFileUpload(files, folderId);
+    },
+    disabled: uploadLoading
+  });
 
   // Filter content by type
   const filteredContent = useMemo(() => {
@@ -111,14 +143,15 @@ export function UnifiedContentView({
     
     setIsDeleting(true);
     try {
-      await onBulkDeleteItems(selectedIds);
+      // Pass the filtered content items so parent can determine content types
+      await onBulkDeleteItems(selectedIds, filteredContent, refresh);
       setSelectedIds([]);
     } catch (error) {
       console.error("Error deleting items:", error);
     } finally {
       setIsDeleting(false);
     }
-  }, [onBulkDeleteItems, selectedIds]);
+  }, [onBulkDeleteItems, selectedIds, filteredContent, refresh]);
 
   const handleDeleteClick = useCallback(() => {
     if (selectedIds.length === 0) return;
@@ -161,20 +194,42 @@ export function UnifiedContentView({
   }
 
   return (
-    <div className="w-full flex-col justify-start gap-6">
+    <div 
+      className={cn(
+        "w-full flex-col justify-start gap-6 relative",
+        isDragging && "drag-active"
+      )}
+      {...dragHandlers}
+    >
+      {/* Drag overlay - only visible when dragging files */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm">
+          <div className="rounded-lg bg-background p-8 text-center shadow-lg">
+            <IconUpload className="mx-auto mb-4 h-12 w-12 text-primary" />
+            <h3 className="mb-2 text-xl font-medium">Drop to Upload</h3>
+            <p className="text-muted-foreground">
+              {isInSpecificFolder 
+                ? `Files will be uploaded to this folder`
+                : `Files will be uploaded as unfiled content`
+              }
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header with breadcrumb and controls */}
       <div className="flex items-center justify-between px-4 lg:px-6 py-6">
         <div className="flex items-center gap-4">
-          {onBack && (
-            <>
-              <Button variant="ghost" size="sm" onClick={handleBack}>
-                <IconArrowLeft className="mr-2 h-4 w-4" />
-                Back
+          <div className="flex items-center gap-2">
+            {onBack && (
+              <Button variant="ghost" size="sm" onClick={handleBack} className="p-2">
+                <IconArrowLeft className="h-5 w-5" />
               </Button>
-              <span className="text-muted-foreground">/</span>
-            </>
-          )}
-          <span className="font-medium">{title}</span>
+            )}
+            <h1 className="text-2xl font-bold tracking-tight">
+              {title && title.length > 20 ? `${title.substring(0, 20)}...` : title}
+            </h1>
+          </div>
           
           <div className="flex items-center gap-2 ml-4">
             <IconSearch className="h-4 w-4 text-muted-foreground" />
@@ -206,72 +261,6 @@ export function UnifiedContentView({
         
         <div className="flex items-center gap-2">
           {/* Bulk Action Buttons - always visible, disabled when no selection */}
-          {/* Folders dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                disabled={loading || !hasSelection}
-                className="flex items-center gap-2"
-              >
-                <IconFolder className="h-4 w-4" />
-                Folders
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              {/* Remove from current folder option (only show when in a specific folder) */}
-              {isInSpecificFolder && (
-                <>
-                  <DropdownMenuItem 
-                    onClick={handleRemoveFromFolder}
-                    disabled={loading || !hasSelection}
-                    className="text-orange-600 dark:text-orange-400"
-                  >
-                    <IconX className="h-4 w-4 mr-2" />
-                    Remove from Current Folder
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              
-              {/* Info about graph limitations */}
-              {hasSelection && (
-                <>
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                    Note: Only documents can be moved to folders. Graphs will be skipped.
-                  </div>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              
-              {/* Move to folder options */}
-              {folders && folders.length > 0 ? (
-                folders
-                  .filter(folder => folder.id !== folderId) // Don't show current folder
-                  .map((folder) => (
-                    <DropdownMenuItem
-                      key={folder.id}
-                      onClick={() => handleBulkMoveToFolder(folder.id)}
-                      disabled={loading || !hasSelection}
-                    >
-                      <IconFolder className="h-4 w-4 mr-2" />
-                      {folder.name}
-                      {folder.document_count !== undefined && (
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {folder.document_count}
-                        </span>
-                      )}
-                    </DropdownMenuItem>
-                  ))
-              ) : (
-                <DropdownMenuItem disabled>
-                  No folders available
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           {/* Delete button */}
           <Button
             variant="outline"
@@ -281,7 +270,18 @@ export function UnifiedContentView({
             className="flex items-center gap-2 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
           >
             <IconTrash className="h-4 w-4" />
-            Delete
+          </Button>
+
+          {/* Upload button */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setUploadDialogOpen(true)}
+            disabled={uploadLoading}
+            className="flex items-center gap-2"
+          >
+            <IconUpload className="h-4 w-4" />
+            <span className="hidden lg:inline">Upload</span>
           </Button>
 
           {/* More actions dropdown */}
@@ -310,13 +310,78 @@ export function UnifiedContentView({
             </DropdownMenuContent>
           </DropdownMenu>
 
+          {/* Collections dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={loading || !hasSelection}
+                className="flex items-center gap-2"
+              >
+                <IconFolder className="h-4 w-4" />
+                Collections
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              {/* Remove from current folder option (only show when in a specific folder) */}
+              {isInSpecificFolder && (
+                <>
+                  <DropdownMenuItem 
+                    onClick={handleRemoveFromFolder}
+                    disabled={loading || !hasSelection}
+                    className="text-orange-600 dark:text-orange-400"
+                  >
+                    <IconX className="h-4 w-4 mr-2" />
+                    Remove from Current Collection
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              
+              {/* Info about graph limitations */}
+              {hasSelection && (
+                <>
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                    Note: Only documents can be moved to collections. Graphs will be skipped.
+                  </div>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              
+              {/* Move to folder options */}
+              {folders && folders.length > 0 ? (
+                folders
+                  .filter(folder => folder.id !== folderId) // Don't show current folder
+                  .map((folder) => (
+                    <DropdownMenuItem
+                      key={folder.id}
+                      onClick={() => handleBulkMoveToFolder(folder.id)}
+                      disabled={loading || !hasSelection}
+                    >
+                      <IconFolder className="h-4 w-4 mr-2" />
+                      {folder.name}
+                      {folder.document_count !== undefined && (
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {folder.document_count}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                  ))
+              ) : (
+                <DropdownMenuItem disabled>
+                  No collections available
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {/* Customize Columns */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
                 <IconLayoutColumns className="h-4 w-4" />
-                <span className="hidden lg:inline">Customize Columns</span>
-                <span className="lg:hidden">Columns</span>
+                <span className="hidden lg:inline">Columns</span>
                 <IconChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -394,7 +459,20 @@ export function UnifiedContentView({
               ) : (
                 <TableRow>
                   <TableCell colSpan={table.getAllColumns().length} className="h-24 text-center">
-                    No content found.
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <IconUpload className="mx-auto mb-2 h-12 w-12 text-muted-foreground" />
+                      <p className="text-muted-foreground">No content found.</p>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Drag and drop files here or use the upload button to get started.
+                      </p>
+                      <Button 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={() => setUploadDialogOpen(true)}
+                      >
+                        Upload Files
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               )}
@@ -479,6 +557,21 @@ export function UnifiedContentView({
           </div>
         </div>
       </div>
+
+      {/* Upload Dialog */}
+      <UnifiedUploadDialog
+        open={uploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        currentFolderId={folderId}
+        folders={folders}
+        onUploadComplete={() => {
+          // Additional completion handling if needed
+        }}
+        loading={uploadLoading}
+        onFileUpload={handleFileUpload}
+        onBatchFileUpload={handleBatchFileUpload}
+        onTextUpload={handleTextUpload}
+      />
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
