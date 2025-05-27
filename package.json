@@ -1,19 +1,11 @@
 {
-	"name": "moongraph-v4-workspace",
-	"private": true,
-	"scripts": {
-		"build": "cd frontend && npm run build",
-		"dev": "cd frontend && npm run dev",
-		"start": "cd frontend && npm run start",
-		"install-frontend": "cd frontend && npm ci"
-	},
 	"dependencies": {
 		"@cosmograph/react": "^1.4.2",
 		"@radix-ui/react-switch": "^1.2.5",
-		"force-graph": "^1.43.4",
-		"next": "15.3.2",
-		"react": "^19.0.0",
-		"react-dom": "^19.0.0"
+		"force-graph": "^1.43.4"
 	},
-	"devDependencies": {}
+	"name": "moongraph-v4-workspace",
+	"private": true,
+	"devDependencies": {},
+	"scripts": {}
 }

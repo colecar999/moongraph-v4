@@ -3,11 +3,21 @@
 import * as React from "react"
 import { useSession } from "next-auth/react"
 import {
+  IconCamera,
+  IconChartBar,
   IconDashboard,
+  IconDatabase,
+  IconFileAi,
+  IconFileDescription,
+  IconFileWord,
+  IconFolder,
+  IconHelp,
   IconInnerShadowTop,
+  IconListDetails,
   IconReport,
   IconSearch,
   IconSettings,
+  IconUsers,
   IconHome,
   IconMessageCircle,
   IconRobot,
@@ -77,7 +87,7 @@ const staticData = {
     {
       name: "Unified",
       url: "/unified",
-      icon: IconDashboard,
+      icon: IconChartBar,
     },
     {
       name: "Search",
