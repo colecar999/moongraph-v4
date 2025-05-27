@@ -29,8 +29,8 @@ ENV UV_CACHE_DIR=/root/.cache/uv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:${PATH}"
 
-# Copy requirements file from morphik-core
-COPY morphik-core/requirements.txt ./
+# Copy requirements file from repository root
+COPY requirements.txt ./
 
 # Create venv and install dependencies from requirements.txt
 RUN --mount=type=cache,target=${UV_CACHE_DIR} \
