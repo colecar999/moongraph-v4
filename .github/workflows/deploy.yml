@@ -1,0 +1,167 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./morphik-core
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run linting
+        run: |
+          pip install flake8
+          flake8 core/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          
+      - name: Run tests
+        run: |
+          pytest core/tests/ -v --tb=short
+        env:
+          # Test environment variables
+          JWT_SECRET_KEY: test-secret-key
+          POSTGRES_URI: postgresql+asyncpg://test:test@localhost:5432/test
+          AUTH0_DOMAIN: test.auth0.com
+          AUTH0_API_IDENTIFIER: https://api.test.com
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Run linting
+        run: npm run lint
+        
+      - name: Run type checking
+        run: npx tsc --noEmit
+        
+      - name: Build application
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://api.moongraph.io
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          AUTH0_ISSUER_BASE_URL: ${{ secrets.AUTH0_ISSUER_BASE_URL }}
+          AUTH0_API_IDENTIFIER: ${{ secrets.AUTH0_API_IDENTIFIER }}
+          NEXTAUTH_URL: https://moongraph.io
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+
+  deploy-backend:
+    needs: [test-backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy API to Render
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
+          
+      - name: Deploy Worker to Render
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WORKER }}"
+          
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for deployment to complete..."
+          sleep 30
+          
+      - name: Health check
+        run: |
+          max_attempts=10
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            if curl -f https://api.moongraph.io/health; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Health check failed, attempt $attempt/$max_attempts"
+            sleep 30
+            attempt=$((attempt + 1))
+          done
+          echo "Health check failed after $max_attempts attempts"
+          exit 1
+
+  deploy-frontend:
+    needs: [test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy to Vercel
+        run: |
+          echo "Vercel auto-deploys from GitHub when connected to the repository"
+          echo "Frontend deployment will be triggered automatically"
+          
+      - name: Wait for Vercel deployment
+        run: |
+          echo "Waiting for Vercel deployment to complete..."
+          sleep 60
+          
+      - name: Frontend health check
+        run: |
+          max_attempts=5
+          attempt=1
+          while [ $attempt -le $max_attempts ]; do
+            if curl -f https://moongraph.io; then
+              echo "Frontend health check passed!"
+              exit 0
+            fi
+            echo "Frontend health check failed, attempt $attempt/$max_attempts"
+            sleep 30
+            attempt=$((attempt + 1))
+          done
+          echo "Frontend health check failed after $max_attempts attempts"
+          exit 1
+
+  notify-deployment:
+    needs: [deploy-backend, deploy-frontend]
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Notify deployment status
+        run: |
+          if [ "${{ needs.deploy-backend.result }}" == "success" ] && [ "${{ needs.deploy-frontend.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+            echo "Backend: https://api.moongraph.io"
+            echo "Frontend: https://moongraph.io"
+          else
+            echo "❌ Deployment failed!"
+            echo "Backend status: ${{ needs.deploy-backend.result }}"
+            echo "Frontend status: ${{ needs.deploy-frontend.result }}"
+            exit 1
+          fi 
