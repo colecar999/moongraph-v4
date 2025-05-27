@@ -29,8 +29,8 @@ ENV UV_CACHE_DIR=/root/.cache/uv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:${PATH}"
 
-# Copy project definition and lock file
-COPY pyproject.toml uv.lock ./
+# Copy project definition and lock file from morphik-core
+COPY morphik-core/pyproject.toml morphik-core/uv.lock ./
 
 # Create venv and install dependencies from lockfile (excluding the project itself initially for better caching)
 # This also creates the /app/.venv directory
@@ -38,9 +38,8 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=${UV_CACHE_DIR} \
     uv sync --verbose --no-install-project
 
-# Copy the rest of the application code
-# Assuming start_server.py is at the root or handled by pyproject.toml structure.
-COPY . .
+# Copy the rest of the application code from morphik-core
+COPY morphik-core/ ./
 
 # Install the project itself into the venv in non-editable mode
 # Cache buster: 1 - verbose flag added
@@ -192,14 +191,9 @@ else\n\
 fi\n\
 ' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
-# Copy application code
+# Copy application code from morphik-core (already copied above)
 # pyproject.toml is needed for uv to identify the project context for `uv run`
-COPY pyproject.toml ./
-COPY core ./core
-COPY ee ./ee
-COPY README.md LICENSE ./
-# Assuming start_server.py is at the root of your project
-COPY start_server.py ./
+# Files are already copied in the COPY morphik-core/ ./ step above
 
 # Labels for the image
 LABEL org.opencontainers.image.title="Morphik Core"
