@@ -140,19 +140,17 @@ provider = "pgvector"\n\
 # Create startup script
 RUN echo '#!/bin/bash\n\
 set -e\n\
-\n\
 # Copy default config if none exists\n\
 if [ ! -f /app/morphik.toml ]; then\n\
     cp /app/morphik.toml.default /app/morphik.toml\n\
 fi\n\
-\n\
 # Function to check PostgreSQL\n\
 check_postgres() {\n\
     if [ -n "$POSTGRES_URI" ]; then\n\
         echo "Waiting for PostgreSQL..."\n\
         max_retries=30\n\
         retries=0\n\
-        until PGPASSWORD=$PGPASSWORD pg_isready -h postgres -U morphik -d morphik; do\n\
+        until pg_isready -d "$POSTGRES_URI"; do\n\
             retries=$((retries + 1))\n\
             if [ $retries -eq $max_retries ]; then\n\
                 echo "Error: PostgreSQL did not become ready in time"\n\
@@ -162,19 +160,16 @@ check_postgres() {\n\
             sleep 2\n\
         done\n\
         echo "PostgreSQL is ready!"\n\
-        \n\
         # Verify database connection\n\
-        if ! PGPASSWORD=$PGPASSWORD psql -h postgres -U morphik -d morphik -c "SELECT 1" > /dev/null 2>&1; then\n\
+        if ! PGPASSWORD=$PGPASSWORD psql "$POSTGRES_URI" -c "SELECT 1" > /dev/null 2>&1; then\n\
             echo "Error: Could not connect to PostgreSQL database"\n\
             exit 1\n\
         fi\n\
         echo "PostgreSQL connection verified!"\n\
     fi\n\
 }\n\
-\n\
 # Check PostgreSQL\n\
 check_postgres\n\
-\n\
 # Check if command arguments were passed ($# is the number of arguments)\n\
 if [ $# -gt 0 ]; then\n\
     # If arguments exist, execute them (e.g., execute "arq core.workers...")\n\
@@ -182,8 +177,7 @@ if [ $# -gt 0 ]; then\n\
 else\n\
     # Otherwise, execute the default command (start FastAPI server)\n\
     exec python -m uvicorn core.api:app --host $HOST --port $PORT --loop asyncio --http auto --ws auto --lifespan auto\n\
-fi\n\
-' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
+fi\n' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 # Copy application code from morphik-core (already copied above)
 # Files are already copied in the COPY morphik-core/ ./ step above
