@@ -24,6 +24,7 @@ import {
   IconAtom,
   IconFile,
   IconGraph,
+  IconShield,
 } from "@tabler/icons-react"
 
 import { NavDocuments } from "@/components/nav-documents"
@@ -39,40 +40,42 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { isAdminUser } from "@/lib/utils/admin"
+
+const baseNavMain = [
+  {
+    title: "Home",
+    url: "/home",
+    icon: IconHome,
+  },
+  {
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: IconDashboard,
+  },
+  {
+    title: "Chat",
+    url: "/chat",
+    icon: IconMessageCircle,
+  },
+  {
+    title: "Agent",
+    url: "/agent",
+    icon: IconRobot,
+  },
+  {
+    title: "Cosmograph",
+    url: "/cosmograph",
+    icon: IconAtom,
+  },
+  {
+    title: "System",
+    url: "/system",
+    icon: IconSettings,
+  },
+]
 
 const staticData = {
-  navMain: [
-    {
-      title: "Home",
-      url: "/home",
-      icon: IconHome,
-    },
-    {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: IconDashboard,
-    },
-    {
-      title: "Chat",
-      url: "/chat",
-      icon: IconMessageCircle,
-    },
-    {
-      title: "Agent",
-      url: "/agent",
-      icon: IconRobot,
-    },
-    {
-      title: "Cosmograph",
-      url: "/cosmograph",
-      icon: IconAtom,
-    },
-    {
-      title: "System",
-      url: "/system",
-      icon: IconSettings,
-    },
-  ],
   navClouds: [],
   navSecondary: [],
   documents: [
@@ -144,6 +147,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   }, [session, status, isClient])
 
+  // Create navigation items with conditional admin link
+  const navMain = React.useMemo(() => {
+    const items = [...baseNavMain]
+    
+    // Insert admin link between Cosmograph and System if user is admin
+    if (isClient && session?.user?.email && isAdminUser(session.user.email)) {
+      const cosmographIndex = items.findIndex(item => item.title === "Cosmograph")
+      if (cosmographIndex !== -1) {
+        items.splice(cosmographIndex + 1, 0, {
+          title: "Admin",
+          url: "/admin",
+          icon: IconShield,
+        })
+      }
+    }
+    
+    return items
+  }, [isClient, session?.user?.email])
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -162,7 +184,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={staticData.navMain} />
+        <NavMain items={navMain} />
         <NavDocuments items={staticData.documents} />
         <NavSecondary items={staticData.navSecondary} className="mt-auto" />
       </SidebarContent>

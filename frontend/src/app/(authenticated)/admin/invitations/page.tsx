@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Mail, UserPlus, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { isAdminUser } from '@/lib/utils/admin'
 
 interface AccessRequest {
   id: string
@@ -29,15 +32,41 @@ interface Invitation {
 }
 
 export default function AdminInvitationsPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([])
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [newInviteEmail, setNewInviteEmail] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
 
+  // Admin access control
+  useEffect(() => {
+    if (status === 'loading') return
+    
+    if (!session) {
+      router.push('/auth/signin')
+      return
+    }
+
+    if (!isAdminUser(session.user?.email)) {
+      router.push('/home')
+      return
+    }
+  }, [session, status, router])
+
   useEffect(() => {
     fetchData()
   }, [])
+
+  // Early return for non-admin users
+  if (status === 'loading') {
+    return <div className="p-6">Loading...</div>
+  }
+
+  if (!session || !isAdminUser(session.user?.email)) {
+    return <div className="p-6">Access denied</div>
+  }
 
   const fetchData = async () => {
     try {
